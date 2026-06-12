@@ -12,7 +12,7 @@ import {
 } from "@/components/ui/dialog";
 import {
   Plus, GraduationCap, ArrowLeft, Loader2,
-  FileText, Video, BookOpen, Target,
+  FileText, Video, BookOpen, Target, HelpCircle, CheckCircle2,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -30,6 +30,16 @@ interface Course {
   createdBy: string;
   createdAt: string;
   updatedAt: string;
+}
+
+interface Question {
+  _id: string;
+  courseId: string;
+  question: string;
+  options: string[];
+  correctAnswer: number;
+  marks: number;
+  createdAt: string;
 }
 
 const COVERS = [
@@ -75,13 +85,15 @@ export default function AdminCourses() {
   const handleCreate = async (payload: Partial<Course>) => {
     try {
       const token = localStorage.getItem("token");
+      const user = JSON.parse(localStorage.getItem("user") || "{}");
+      const createdBy = user?._id || user?.id || "";
       const res = await fetch(`${LMS_API_URL}/course`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
           ...(token ? { Authorization: `Bearer ${token}` } : {}),
         },
-        body: JSON.stringify(payload),
+        body: JSON.stringify({ ...payload, createdBy }),
       });
       const data = await res.json();
       if (res.ok && data.success) {
@@ -215,6 +227,51 @@ function CourseCard({ course, onOpen }: { course: Course; onOpen: () => void }) 
 // ─── course detail ────────────────────────────────────────────────────────────
 
 function CourseDetail({ course, onBack }: { course: Course; onBack: () => void }) {
+  const [questions, setQuestions] = useState<Question[]>([]);
+  const [qLoading, setQLoading] = useState(true);
+  const [addQOpen, setAddQOpen] = useState(false);
+
+  const fetchQuestions = async () => {
+    setQLoading(true);
+    try {
+      const res = await fetch(`${LMS_API_URL}/course/${course._id}/question`);
+      const data = await res.json();
+      if (res.ok && data.success) {
+        setQuestions(Array.isArray(data.data) ? data.data : []);
+      }
+    } catch {
+      // non-critical
+    } finally {
+      setQLoading(false);
+    }
+  };
+
+  useEffect(() => { fetchQuestions(); }, [course._id]);
+
+  const handleAddQuestion = async (payload: Omit<Question, "_id" | "createdAt">) => {
+    try {
+      const token = localStorage.getItem("token");
+      const res = await fetch(`${LMS_API_URL}/course/${course._id}/question`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify(payload),
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        toast.success("Question added");
+        setQuestions((prev) => [...prev, data.data]);
+        setAddQOpen(false);
+      } else {
+        toast.error(data.message || "Failed to add question");
+      }
+    } catch {
+      toast.error("Network error");
+    }
+  };
+
   return (
     <div className="space-y-6">
       <Button variant="ghost" size="sm" onClick={onBack}>
@@ -249,6 +306,42 @@ function CourseDetail({ course, onBack }: { course: Course; onBack: () => void }
             </CardHeader>
             <CardContent>
               <p className="text-sm whitespace-pre-wrap leading-relaxed">{course.contentText}</p>
+            </CardContent>
+          </Card>
+
+          {/* Questions */}
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-3">
+              <CardTitle className="flex items-center gap-2">
+                <HelpCircle className="h-4 w-4 text-brand" /> Quiz Questions
+                <Badge variant="outline" className="ml-1 text-[10px]">{questions.length}</Badge>
+              </CardTitle>
+              <Dialog open={addQOpen} onOpenChange={setAddQOpen}>
+                <DialogTrigger asChild>
+                  <Button size="sm" className="bg-brand text-brand-foreground hover:bg-brand/90">
+                    <Plus className="h-3.5 w-3.5 mr-1" /> Add Question
+                  </Button>
+                </DialogTrigger>
+                <AddQuestionDialog courseId={course._id} onAdd={handleAddQuestion} />
+              </Dialog>
+            </CardHeader>
+            <CardContent>
+              {qLoading ? (
+                <div className="flex items-center justify-center py-8">
+                  <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+                </div>
+              ) : questions.length === 0 ? (
+                <div className="py-8 text-center text-muted-foreground text-sm">
+                  <HelpCircle className="h-7 w-7 mx-auto mb-2 opacity-30" />
+                  No questions yet. Add the first one.
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  {questions.map((q, idx) => (
+                    <QuestionRow key={q._id} question={q} index={idx} />
+                  ))}
+                </div>
+              )}
             </CardContent>
           </Card>
         </div>
@@ -315,16 +408,150 @@ function CourseDetail({ course, onBack }: { course: Course; onBack: () => void }
   );
 }
 
+// ─── question row ─────────────────────────────────────────────────────────────
+
+function QuestionRow({ question, index }: { question: Question; index: number }) {
+  return (
+    <div className="rounded-lg border p-4 space-y-3">
+      <div className="flex items-start gap-3">
+        <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-brand/10 text-[10px] font-bold text-brand">
+          {index + 1}
+        </span>
+        <div className="flex-1 space-y-2">
+          <p className="text-sm font-medium">{question.question}</p>
+          <div className="grid grid-cols-2 gap-1.5">
+            {question.options.map((opt, i) => (
+              <div
+                key={i}
+                className={`flex items-center gap-1.5 rounded-md px-2 py-1.5 text-xs border ${
+                  i === question.correctAnswer
+                    ? "border-emerald-500/40 bg-emerald-50 text-emerald-700"
+                    : "border-border bg-muted/30 text-muted-foreground"
+                }`}
+              >
+                {i === question.correctAnswer && (
+                  <CheckCircle2 className="h-3 w-3 shrink-0" />
+                )}
+                <span className="line-clamp-2">{opt}</span>
+              </div>
+            ))}
+          </div>
+          <Badge variant="outline" className="text-[10px]">
+            {question.marks} mark{question.marks !== 1 ? "s" : ""}
+          </Badge>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── add question dialog ──────────────────────────────────────────────────────
+
+function AddQuestionDialog({
+  courseId,
+  onAdd,
+}: {
+  courseId: string;
+  onAdd: (payload: Omit<Question, "_id" | "createdAt">) => Promise<void>;
+}) {
+  const [questionText, setQuestionText] = useState("");
+  const [options, setOptions]           = useState(["", "", "", ""]);
+  const [correctAnswer, setCorrectAnswer] = useState(0);
+  const [marks, setMarks]               = useState(1);
+  const [saving, setSaving]             = useState(false);
+
+  const setOption = (i: number, val: string) =>
+    setOptions((prev) => prev.map((o, idx) => (idx === i ? val : o)));
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!questionText.trim()) { toast.error("Question text is required"); return; }
+    if (options.some((o) => !o.trim())) { toast.error("All 4 options are required"); return; }
+    setSaving(true);
+    await onAdd({ courseId, question: questionText, options, correctAnswer, marks });
+    setSaving(false);
+  };
+
+  const labels = ["A", "B", "C", "D"];
+
+  return (
+    <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
+      <DialogHeader>
+        <DialogTitle>Add question</DialogTitle>
+        <DialogDescription>MCQ — click a letter to mark the correct answer.</DialogDescription>
+      </DialogHeader>
+      <form onSubmit={handleSubmit} className="space-y-4 pt-2">
+        <div>
+          <Label>Question *</Label>
+          <Textarea
+            rows={3}
+            value={questionText}
+            onChange={(e) => setQuestionText(e.target.value)}
+            placeholder="e.g. What is the full form of POS?"
+            required
+          />
+        </div>
+
+        <div className="space-y-2">
+          <Label>Options *</Label>
+          {options.map((opt, i) => (
+            <div key={i} className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setCorrectAnswer(i)}
+                className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full border text-xs font-bold transition ${
+                  correctAnswer === i
+                    ? "border-emerald-500 bg-emerald-500 text-white"
+                    : "border-border bg-muted/40 text-muted-foreground hover:border-brand"
+                }`}
+                title={`Mark ${labels[i]} as correct`}
+              >
+                {labels[i]}
+              </button>
+              <Input
+                value={opt}
+                onChange={(e) => setOption(i, e.target.value)}
+                placeholder={`Option ${labels[i]}`}
+                required
+              />
+            </div>
+          ))}
+          <p className="text-[11px] text-muted-foreground">
+            Correct answer: <b>Option {labels[correctAnswer]}</b>
+          </p>
+        </div>
+
+        <div>
+          <Label>Marks</Label>
+          <Input
+            type="number"
+            min={1}
+            max={100}
+            value={marks}
+            onChange={(e) => setMarks(Number(e.target.value))}
+          />
+        </div>
+
+        <DialogFooter>
+          <Button type="submit" disabled={saving} className="bg-brand">
+            {saving ? <><Loader2 className="h-4 w-4 animate-spin mr-1" /> Saving…</> : "Add question"}
+          </Button>
+        </DialogFooter>
+      </form>
+    </DialogContent>
+  );
+}
+
 // ─── new course dialog ────────────────────────────────────────────────────────
 
 function NewCourseDialog({ onCreate }: { onCreate: (c: Partial<Course>) => void }) {
-  const [title, setTitle]                   = useState("");
-  const [description, setDescription]       = useState("");
-  const [contentText, setContentText]       = useState("");
-  const [pdfUrl, setPdfUrl]                 = useState("");
-  const [videoUrl, setVideoUrl]             = useState("");
-  const [passingPercentage, setPassing]     = useState(70);
-  const [saving, setSaving]                 = useState(false);
+  const [title, setTitle]               = useState("");
+  const [description, setDescription]   = useState("");
+  const [contentText, setContentText]   = useState("");
+  const [pdfUrl, setPdfUrl]             = useState("");
+  const [videoUrl, setVideoUrl]         = useState("");
+  const [passingPercentage, setPassing] = useState(70);
+  const [saving, setSaving]             = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
