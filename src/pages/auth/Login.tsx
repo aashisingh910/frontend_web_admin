@@ -44,10 +44,9 @@ const roleCards: {
     title: "Staff",
     desc: "Check in, learn, hit targets, earn rewards.",
     icon: User,
-    demoIdentifier: "emp.552815@hometown.internal",
-    demoName: "Swapnil Singh",
-    password: "staff@123",
-    requiresPassword: true,
+    demoIdentifier: "026568",
+    demoName: "MD Aurangzeb",
+    requiresPassword: false,
   },
 ];
 
@@ -160,15 +159,13 @@ export default function LoginPage() {
 
       if (role === "manager") {
         url = `${API_BASE_URL}/auth/manager/login`;
-        body = {
-          identifier,
-        };
+        body = { identifier };
+      } else if (role === "staff") {
+        url = `${API_BASE_URL}/auth/staff/login`;
+        body = { identifier };
       } else {
         url = `${API_BASE_URL}/users/login`;
-        body = {
-          email: identifier,
-          password,
-        };
+        body = { email: identifier, password };
       }
 
       const res = await fetch(url, {
@@ -319,20 +316,24 @@ export default function LoginPage() {
 
             <div className="space-y-2">
               <Label htmlFor="identifier">
-                {role === "manager"
+                {role === "admin"
+                  ? "Email"
+                  : role === "manager"
                   ? "Email / Mobile / Employee Code"
-                  : "Email"}
+                  : "Employee Code / Mobile"}
               </Label>
 
               <Input
                 id="identifier"
-                type={role === "manager" ? "text" : "email"}
+                type={role === "admin" ? "email" : "text"}
                 value={identifier}
                 onChange={(e) => setIdentifier(e.target.value)}
                 placeholder={
-                  role === "manager"
+                  role === "admin"
+                    ? "admin@hometown.com"
+                    : role === "manager"
                     ? "azam.qazi@praxisretail.in / MGR6068 / 8433599557"
-                    : "email@hometown.com"
+                    : "026568 / 9876543210"
                 }
                 required
               />
@@ -352,8 +353,9 @@ export default function LoginPage() {
               </div>
             ) : (
               <div className="rounded-lg border bg-muted/40 p-3 text-xs text-muted-foreground">
-                Manager password is skipped for now. Later this will be replaced
-                with OTP mobile login.
+                {role === "staff"
+                  ? "Staff password is skipped for now. Later this will use OTP mobile login."
+                  : "Manager password is skipped for now. Later this will be replaced with OTP mobile login."}
               </div>
             )}
 
