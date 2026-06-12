@@ -77,10 +77,11 @@ function getEligibilityBadge(status: string) {
   }
 }
 
-const API_BASE = "http://localhost:5002/api/aashi";
-
 async function fetchIncentives(): Promise<ApiIncentive[]> {
-  const res = await fetch(`${API_BASE}/incentives`);
+  const token = localStorage.getItem("token");
+  const res = await fetch("/api/aashi/incentives", {
+    headers: { Authorization: `Bearer ${token}` },
+  });
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   const json = await res.json();
   if (!json.success) throw new Error(json.message || "Unknown error");
