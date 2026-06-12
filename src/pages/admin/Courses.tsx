@@ -11,9 +11,9 @@ import {
   DialogHeader, DialogTitle, DialogTrigger,
 } from "@/components/ui/dialog";
 import {
-  Plus, GraduationCap, ArrowLeft, Loader2, BookOpen, Target,
-  FileText, Video, HelpCircle, CheckCircle2, BookMarked, LayoutGrid,
-  Calendar, ExternalLink, AlertCircle,
+  Plus, GraduationCap, Loader2, BookOpen, Target,
+  FileText, Video, HelpCircle, CheckCircle2, LayoutGrid,
+  Calendar, ExternalLink, AlertCircle, X, Pencil,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -44,7 +44,7 @@ interface Question {
   updatedAt: string;
 }
 
-// ─── constants ────────────────────────────────────────────────────────────────
+// ─── helpers ──────────────────────────────────────────────────────────────────
 
 const COVERS = [
   "linear-gradient(135deg,#3B2416 0%,#C8A24A 100%)",
@@ -66,7 +66,7 @@ const fmt = (d: string) =>
 export default function AdminCourses() {
   const [courses, setCourses]   = useState<Course[]>([]);
   const [loading, setLoading]   = useState(true);
-  const [selected, setSelected] = useState<Course | null>(null);
+  const [selected, setSelected] = useState<Course | null>(null);   // selected course for side panel
   const [openNew, setOpenNew]   = useState(false);
   const [search, setSearch]     = useState("");
   const [filter, setFilter]     = useState<"ALL" | "PUBLISHED" | "DRAFT">("ALL");
@@ -112,15 +112,31 @@ export default function AdminCourses() {
     }
   };
 
-  if (selected) {
-    return (
-      <CourseDetail
-        course={selected}
-        onBack={() => setSelected(null)}
-      />
-    );
-  }
+  const handleUpdate = async (id: string, updates: Partial<Course>) => {
+    try {
+      const token = localStorage.getItem("token");
+      const res   = await fetch(`${LMS_API_URL}/course/${id}`, {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify(updates),
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        toast.success("Course updated");
+        setCourses((prev) => prev.map(c => c._id === id ? { ...c, ...data.data } : c));
+        if (selected?._id === id) setSelected(data.data); // update panel data
+      } else {
+        toast.error(data.message || "Update failed");
+      }
+    } catch {
+      toast.error("Network error");
+    }
+  };
 
+  // ── filters ──
   const published = courses.filter((c) => c.status === "PUBLISHED");
   const draft     = courses.filter((c) => c.status === "DRAFT");
   const avgPass   = courses.length
@@ -136,7 +152,7 @@ export default function AdminCourses() {
   });
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 relative">
       {/* ── header ── */}
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
@@ -158,7 +174,7 @@ export default function AdminCourses() {
         {[
           { icon: LayoutGrid,   label: "Total Courses",  value: courses.length,   tint: "bg-brand/10 text-brand" },
           { icon: GraduationCap,label: "Published",      value: published.length, tint: "bg-emerald-500/10 text-emerald-700" },
-          { icon: BookMarked,   label: "Draft",          value: draft.length,     tint: "bg-amber-500/10 text-amber-700" },
+          { icon: BookOpen,     label: "Draft",          value: draft.length,     tint: "bg-amber-500/10 text-amber-700" },
           { icon: Target,       label: "Avg Pass %",     value: `${avgPass}%`,    tint: "bg-blue-500/10 text-blue-700" },
         ].map((k) => (
           <Card key={k.label}>
@@ -228,11 +244,37 @@ export default function AdminCourses() {
           ))}
         </div>
       )}
+
+      {/* ── side panel (selected course detail) ── */}
+      {selected && (
+        <div
+          className="fixed inset-0 z-50 flex justify-end bg-black/40 transition-opacity"
+          onClick={() => setSelected(null)}
+        >
+          <div
+            className="w-full max-w-3xl bg-background h-full overflow-y-auto shadow-xl animate-slide-in-right"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="sticky top-0 z-10 bg-background border-b p-4 flex items-center justify-between">
+              <h2 className="text-lg font-semibold">Course Details</h2>
+              <Button variant="ghost" size="icon" onClick={() => setSelected(null)}>
+                <X className="h-5 w-5" />
+              </Button>
+            </div>
+            <div className="p-4 md:p-6">
+              <CourseDetail
+                course={selected}
+                onUpdate={handleUpdate}
+              />
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
 
-// ─── course card ──────────────────────────────────────────────────────────────
+// ─── course card (unchanged) ──────────────────────────────────────────────────
 
 function CourseCard({ course, onOpen }: { course: Course; onOpen: () => void }) {
   return (
@@ -240,7 +282,6 @@ function CourseCard({ course, onOpen }: { course: Course; onOpen: () => void }) 
       className="group overflow-hidden cursor-pointer hover:shadow-[0_4px_20px_rgba(0,0,0,0.12)] hover:-translate-y-0.5 transition-all duration-200 border-border/60"
       onClick={onOpen}
     >
-      {/* cover */}
       <div className="relative h-28" style={{ background: coverFor(course._id) }}>
         <div className="absolute inset-0 bg-black/20" />
         <div className="absolute top-3 left-3">
@@ -260,15 +301,10 @@ function CourseCard({ course, onOpen }: { course: Course; onOpen: () => void }) 
       </div>
 
       <CardContent className="p-4 space-y-3">
-        {/* description */}
         <p className="text-xs text-muted-foreground line-clamp-2 leading-relaxed">{course.description}</p>
-
-        {/* content preview */}
         <p className="text-xs text-foreground/70 line-clamp-3 leading-relaxed border-l-2 border-brand/30 pl-2">
           {course.contentText}
         </p>
-
-        {/* meta row */}
         <div className="flex flex-wrap items-center gap-2 pt-1">
           <span className="inline-flex items-center gap-1 rounded-full bg-brand/10 px-2 py-0.5 text-[10px] font-medium text-brand">
             <Target className="h-2.5 w-2.5" /> Pass {course.passingPercentage}%
@@ -284,8 +320,6 @@ function CourseCard({ course, onOpen }: { course: Course; onOpen: () => void }) 
             </span>
           )}
         </div>
-
-        {/* footer */}
         <div className="flex items-center justify-between border-t pt-3">
           <span className="flex items-center gap-1 text-[11px] text-muted-foreground">
             <Calendar className="h-3 w-3" /> {fmt(course.createdAt)}
@@ -304,14 +338,14 @@ function CourseCard({ course, onOpen }: { course: Course; onOpen: () => void }) 
   );
 }
 
-// ─── course detail ────────────────────────────────────────────────────────────
+// ─── course detail (panel version) ────────────────────────────────────────────
 
-function CourseDetail({ course, onBack }: { course: Course; onBack: () => void }) {
+function CourseDetail({ course, onUpdate }: { course: Course; onUpdate: (id: string, updates: Partial<Course>) => void }) {
   const [questions, setQuestions]   = useState<Question[]>([]);
   const [qLoading, setQLoading]     = useState(true);
   const [qError, setQError]         = useState("");
   const [addQOpen, setAddQOpen]     = useState(false);
-  const [newCourseOpen, setNewCourseOpen] = useState(false);
+  const [editCourseOpen, setEditCourseOpen] = useState(false);
 
   const loadQuestions = async () => {
     setQLoading(true);
@@ -357,18 +391,27 @@ function CourseDetail({ course, onBack }: { course: Course; onBack: () => void }
   const totalMarks = questions.reduce((a, q) => a + q.marks, 0);
 
   return (
-    <div className="space-y-6 pb-8">
-      {/* ── nav ── */}
-      <div className="flex items-center gap-3">
-        <Button variant="ghost" size="sm" onClick={onBack} className="gap-1.5">
-          <ArrowLeft className="h-4 w-4" /> Back to Courses
+    <div className="space-y-6">
+      {/* ── edit button ── */}
+      <div className="flex justify-end">
+        <Button variant="outline" size="sm" onClick={() => setEditCourseOpen(true)}>
+          <Pencil className="h-3.5 w-3.5 mr-1.5" /> Edit Course
         </Button>
+        <Dialog open={editCourseOpen} onOpenChange={setEditCourseOpen}>
+          <EditCourseDialog
+            course={course}
+            onUpdate={(updates) => {
+              onUpdate(course._id, updates);
+              setEditCourseOpen(false);
+            }}
+          />
+        </Dialog>
       </div>
 
       {/* ── hero ── */}
       <div className="relative rounded-xl overflow-hidden" style={{ background: coverFor(course._id) }}>
         <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-black/20 to-transparent" />
-        <div className="relative p-7 sm:p-10 space-y-3">
+        <div className="relative p-6 space-y-3">
           <div className="flex flex-wrap gap-2">
             <span className={`inline-flex items-center rounded-full px-3 py-1 text-xs font-semibold ${
               course.status === "PUBLISHED" ? "bg-emerald-500 text-white" : "bg-amber-400 text-black"
@@ -387,18 +430,16 @@ function CourseDetail({ course, onBack }: { course: Course; onBack: () => void }
               </span>
             )}
           </div>
-          <h1 className="text-3xl font-display font-bold text-white leading-tight">{course.title}</h1>
-          <p className="text-white/80 text-sm max-w-2xl">{course.description}</p>
+          <h1 className="text-2xl font-display font-bold text-white leading-tight">{course.title}</h1>
+          <p className="text-white/80 text-sm">{course.description}</p>
           <p className="text-white/50 text-xs">Added {fmt(course.createdAt)} · Last updated {fmt(course.updatedAt)}</p>
         </div>
       </div>
 
       {/* ── body ── */}
       <div className="grid lg:grid-cols-3 gap-6">
-
         {/* left col */}
         <div className="lg:col-span-2 space-y-6">
-
           {/* content */}
           <Card>
             <CardHeader className="pb-3">
@@ -463,8 +504,7 @@ function CourseDetail({ course, onBack }: { course: Course; onBack: () => void }
 
         {/* right col */}
         <div className="space-y-4">
-
-          {/* resource links */}
+          {/* resources */}
           {(course.pdfUrl || course.videoUrl) && (
             <Card>
               <CardHeader className="pb-2">
@@ -560,7 +600,6 @@ function QuestionCard({ question, index }: { question: Question; index: number }
         </span>
         <div className="flex-1 space-y-3">
           <p className="text-sm font-medium leading-relaxed">{question.question}</p>
-
           <div className="grid grid-cols-2 gap-2">
             {question.options.map((opt, i) => (
               <div
@@ -583,7 +622,6 @@ function QuestionCard({ question, index }: { question: Question; index: number }
               </div>
             ))}
           </div>
-
           <div className="flex items-center gap-2">
             <Badge variant="outline" className="text-[10px] font-normal">
               {question.marks} mark{question.marks !== 1 ? "s" : ""}
@@ -596,7 +634,90 @@ function QuestionCard({ question, index }: { question: Question; index: number }
   );
 }
 
-// ─── add question dialog ──────────────────────────────────────────────────────
+// ─── edit course dialog ───────────────────────────────────────────────────────
+
+function EditCourseDialog({ course, onUpdate }: { course: Course; onUpdate: (updates: Partial<Course>) => void }) {
+  const [title, setTitle]           = useState(course.title);
+  const [description, setDesc]      = useState(course.description);
+  const [contentText, setContent]   = useState(course.contentText);
+  const [pdfUrl, setPdf]            = useState(course.pdfUrl);
+  const [videoUrl, setVideo]        = useState(course.videoUrl);
+  const [passing, setPassing]       = useState(course.passingPercentage);
+  const [status, setStatus]         = useState<"PUBLISHED" | "DRAFT">(course.status);
+  const [saving, setSaving]         = useState(false);
+
+  const submit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!title.trim()) { toast.error("Title is required"); return; }
+    setSaving(true);
+    await onUpdate({ title, description, contentText, pdfUrl, videoUrl, passingPercentage: passing, status });
+    setSaving(false);
+  };
+
+  return (
+    <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+      <DialogHeader>
+        <DialogTitle>Edit Course</DialogTitle>
+        <DialogDescription>Update course details.</DialogDescription>
+      </DialogHeader>
+      <form onSubmit={submit} className="space-y-4 pt-2">
+        <div className="grid sm:grid-cols-2 gap-4">
+          <div className="sm:col-span-2 space-y-1.5">
+            <Label>Title *</Label>
+            <Input value={title} onChange={(e) => setTitle(e.target.value)} required />
+          </div>
+          <div className="sm:col-span-2 space-y-1.5">
+            <Label>Description</Label>
+            <Input value={description} onChange={(e) => setDesc(e.target.value)} />
+          </div>
+          <div className="sm:col-span-2 space-y-1.5">
+            <Label>Course Content *</Label>
+            <Textarea rows={5} value={contentText} onChange={(e) => setContent(e.target.value)} required />
+          </div>
+          <div className="space-y-1.5">
+            <Label>PDF URL</Label>
+            <Input value={pdfUrl} onChange={(e) => setPdf(e.target.value)} />
+          </div>
+          <div className="space-y-1.5">
+            <Label>Video URL</Label>
+            <Input value={videoUrl} onChange={(e) => setVideo(e.target.value)} />
+          </div>
+          <div className="space-y-1.5">
+            <Label>Passing %</Label>
+            <Input type="number" min={1} max={100} value={passing} onChange={(e) => setPassing(Number(e.target.value))} />
+          </div>
+          <div className="space-y-1.5">
+            <Label>Status</Label>
+            <div className="flex rounded-lg border overflow-hidden">
+              {(["PUBLISHED", "DRAFT"] as const).map((s) => (
+                <button
+                  key={s}
+                  type="button"
+                  onClick={() => setStatus(s)}
+                  className={`flex-1 py-2 text-xs font-medium transition ${
+                    status === s
+                      ? s === "PUBLISHED" ? "bg-emerald-500 text-white" : "bg-amber-400 text-black"
+                      : "bg-background text-muted-foreground hover:bg-muted"
+                  }`}
+                >
+                  {s}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+        <DialogFooter>
+          <Button type="submit" disabled={saving} className="bg-brand text-white hover:bg-brand/90">
+            {saving ? <Loader2 className="h-4 w-4 animate-spin mr-1.5" /> : null}
+            Save Changes
+          </Button>
+        </DialogFooter>
+      </form>
+    </DialogContent>
+  );
+}
+
+// ─── add question dialog (unchanged) ──────────────────────────────────────────
 
 function AddQuestionDialog({
   courseId,
@@ -697,7 +818,7 @@ function AddQuestionDialog({
   );
 }
 
-// ─── new course dialog ────────────────────────────────────────────────────────
+// ─── new course dialog (unchanged) ────────────────────────────────────────────
 
 function NewCourseDialog({ onCreate }: { onCreate: (c: Partial<Course>) => void }) {
   const [title, setTitle]           = useState("");
