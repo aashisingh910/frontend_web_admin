@@ -25,6 +25,11 @@ import RegisterStore from "@/pages/admin/RegisterStore";
 import RegisterManager from "@/pages/admin/RegisterManager";
 import RegisterStaff from "@/pages/admin/RegisterStaff";
 
+// ── Course management pages ───────────────────────────────────────────────────
+import AdminCoursesPage from "@/pages/courses/AdminCoursesPage";
+import AdminCreateCoursePage from "@/pages/courses/AdminCreateCoursePage";
+import AdminAssignCoursePage from "@/pages/courses/AdminAssignCoursePage";
+
 // ── Manager pages ─────────────────────────────────────────────────────────────
 import ManagerDashboard from "@/pages/manager/Dashboard";
 import ManagerAttendance from "@/pages/manager/Attendance";
@@ -32,6 +37,7 @@ import ManagerTargets from "@/pages/manager/Targets";
 import ManagerIncentives from "@/pages/manager/Incentives";
 import ManagerNotices from "@/pages/manager/Notices";
 import ManagerCourses from "@/pages/manager/Courses";
+import ManagerCoursesPage from "@/pages/manager/ManagerCoursesPage";
 import ManagerStaff from "@/pages/manager/Staff";
 
 // ── Staff pages ───────────────────────────────────────────────────────────────
@@ -41,6 +47,8 @@ import StaffTargets from "@/pages/staff/Targets";
 import StaffIncentives from "@/pages/staff/Incentives";
 import StaffNotices from "@/pages/staff/Notices";
 import StaffCourses from "@/pages/staff/Courses";
+import StaffCoursesPage from "@/pages/staff/StaffCoursesPage";
+import StaffCourseAttemptPage from "@/pages/staff/StaffCourseAttemptPage";
 import StaffProfile from "@/pages/staff/Profile";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -173,6 +181,7 @@ function App() {
               />
             }
           />
+          {/* LMS course viewer — all roles */}
           <Route
             path="/courses"
             element={
@@ -184,7 +193,59 @@ function App() {
             }
           />
 
-          
+          {/* Course management (backend) — admin only */}
+          <Route
+            path="/courses/manage"
+            element={
+              <RoleGuard allow={["admin"]}>
+                <AdminCoursesPage />
+              </RoleGuard>
+            }
+          />
+          <Route
+            path="/courses/create"
+            element={
+              <RoleGuard allow={["admin"]}>
+                <AdminCreateCoursePage />
+              </RoleGuard>
+            }
+          />
+          <Route
+            path="/courses/assign/:courseId"
+            element={
+              <RoleGuard allow={["admin"]}>
+                <AdminAssignCoursePage />
+              </RoleGuard>
+            }
+          />
+
+          {/* Staff assigned courses (backend) */}
+          <Route
+            path="/my-courses"
+            element={
+              <RoleGuard allow={["staff"]}>
+                <StaffCoursesPage />
+              </RoleGuard>
+            }
+          />
+          <Route
+            path="/my-courses/:progressId"
+            element={
+              <RoleGuard allow={["staff"]}>
+                <StaffCourseAttemptPage />
+              </RoleGuard>
+            }
+          />
+
+          {/* Manager store course progress (backend) */}
+          <Route
+            path="/team-courses"
+            element={
+              <RoleGuard allow={["manager"]}>
+                <ManagerCoursesPage />
+              </RoleGuard>
+            }
+          />
 
           {/* Staff profile — staff only */}
           <Route
