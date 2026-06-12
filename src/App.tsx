@@ -47,9 +47,17 @@ import StaffTargets from "@/pages/staff/Targets";
 import StaffIncentives from "@/pages/staff/Incentives";
 import StaffNotices from "@/pages/staff/Notices";
 import StaffCourses from "@/pages/staff/Courses";
+import StaffProfile from "@/pages/staff/Profile";
+
+// ── Staff workspace pages (backend API) ───────────────────────────────────────
+import StaffDashboardPage from "@/pages/staff/StaffDashboardPage";
+import StaffProfilePage from "@/pages/staff/StaffProfilePage";
 import StaffCoursesPage from "@/pages/staff/StaffCoursesPage";
 import StaffCourseAttemptPage from "@/pages/staff/StaffCourseAttemptPage";
-import StaffProfile from "@/pages/staff/Profile";
+import StaffTargetsPage from "@/pages/staff/StaffTargetsPage";
+import StaffAttendancePage from "@/pages/staff/StaffAttendancePage";
+import StaffNoticesPage from "@/pages/staff/StaffNoticesPage";
+import StaffIncentivesPage from "@/pages/staff/StaffIncentivesPage";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -128,7 +136,6 @@ function App() {
 
           {/* Legacy role-prefixed dashboard URLs → canonical /dashboard */}
           <Route path="/manager/dashboard" element={<Navigate to="/dashboard" replace />} />
-          <Route path="/staff/dashboard"   element={<Navigate to="/dashboard" replace />} />
 
           {/* Role-aware pages */}
           <Route
@@ -245,6 +252,40 @@ function App() {
                 <ManagerCoursesPage />
               </RoleGuard>
             }
+          />
+
+          {/* ── Staff workspace (backend API) ─────────────────────────────── */}
+          <Route
+            path="/staff/dashboard"
+            element={<RoleGuard allow={["staff"]}><StaffDashboardPage /></RoleGuard>}
+          />
+          <Route
+            path="/staff/courses"
+            element={<RoleGuard allow={["staff"]}><StaffCoursesPage /></RoleGuard>}
+          />
+          <Route
+            path="/staff/courses/:progressId"
+            element={<RoleGuard allow={["staff"]}><StaffCourseAttemptPage /></RoleGuard>}
+          />
+          <Route
+            path="/staff/targets"
+            element={<RoleGuard allow={["staff"]}><StaffTargetsPage /></RoleGuard>}
+          />
+          <Route
+            path="/staff/attendance"
+            element={<RoleGuard allow={["staff"]}><StaffAttendancePage /></RoleGuard>}
+          />
+          <Route
+            path="/staff/notices"
+            element={<RoleGuard allow={["staff"]}><StaffNoticesPage /></RoleGuard>}
+          />
+          <Route
+            path="/staff/incentives"
+            element={<RoleGuard allow={["staff"]}><StaffIncentivesPage /></RoleGuard>}
+          />
+          <Route
+            path="/staff/profile"
+            element={<RoleGuard allow={["staff"]}><StaffProfilePage /></RoleGuard>}
           />
 
           {/* Staff profile — staff only */}

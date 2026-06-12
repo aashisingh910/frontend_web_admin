@@ -60,7 +60,10 @@ const normalizeRole = (value?: string): Role => {
   return "staff";
 };
 
-const getRedirectPath = (_role: Role) => "/dashboard";
+const getRedirectPath = (role: Role) => {
+  if (role === "staff") return "/staff/dashboard";
+  return "/dashboard";
+};
 
 export default function LoginPage() {
   const [role, setRole] = useState<Role>("admin");

@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { staffCourseApi } from "@/services/courseApi";
+import { staffWorkspaceApi } from "@/services/staffWorkspaceApi";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -9,46 +9,31 @@ import { toast } from "sonner";
 
 export default function StaffCoursesPage() {
   const [courses, setCourses] = useState<any[]>([]);
+  const [summary, setSummary] = useState<any>(null);
   const [loading, setLoading] = useState(true);
-  const [status, setStatus]   = useState("");
+  const [status, setStatus] = useState("");
 
-  const loadCourses = async () => {
+  useEffect(() => {
     setLoading(true);
-    try {
-      const data = await staffCourseApi.list(status);
-      setCourses(data);
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Failed to load courses");
-    } finally {
-      setLoading(false);
-    }
-  };
+    staffWorkspaceApi.courses(status)
+      .then((result) => {
+        setCourses(result.records || []);
+        setSummary(result.summary || {});
+      })
+      .catch((e) => toast.error(e instanceof Error ? e.message : "Failed to load courses"))
+      .finally(() => setLoading(false));
+  }, [status]);
 
-  useEffect(() => { loadCourses(); }, [status]);
-
-  if (loading) {
-    return (
-      <div className="flex min-h-[50vh] items-center justify-center">
-        <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-      </div>
-    );
-  }
-
-  const completed = courses.filter((c) => c.status === "COMPLETED").length;
-  const pending   = courses.filter((c) => c.status === "ASSIGNED").length;
-  const progress  = courses.filter((c) => c.status === "IN_PROGRESS").length;
+  if (loading) return <PageLoader />;
 
   return (
     <div className="space-y-6">
       <header className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <h1 className="text-2xl font-display font-bold flex items-center gap-2">
-            <BookOpen className="h-5 w-5 text-brand" />
-            My Courses
+            <BookOpen className="h-5 w-5 text-brand" /> My Courses
           </h1>
-          <p className="text-sm text-muted-foreground">
-            Courses assigned to you by HomeTown admin.
-          </p>
+          <p className="text-sm text-muted-foreground">Courses assigned to you.</p>
         </div>
         <select
           value={status}
@@ -63,10 +48,11 @@ export default function StaffCoursesPage() {
         </select>
       </header>
 
-      <div className="grid gap-4 md:grid-cols-3">
-        <Stat label="Completed"  value={completed} />
-        <Stat label="In Progress" value={progress} />
-        <Stat label="Pending"    value={pending} />
+      <div className="grid gap-4 md:grid-cols-4">
+        <Stat label="Assigned"    value={summary?.assigned || 0} />
+        <Stat label="In Progress" value={summary?.inProgress || 0} />
+        <Stat label="Completed"   value={summary?.completed || 0} />
+        <Stat label="Badges"      value={summary?.badgesAwarded || 0} />
       </div>
 
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
@@ -82,7 +68,6 @@ export default function StaffCoursesPage() {
                   {item.status}
                 </Badge>
               </div>
-
               <div className="grid grid-cols-3 gap-2 text-center text-xs">
                 <div className="rounded-md bg-secondary p-2">
                   <div className="font-bold">{item.score?.scorePercent || 0}%</div>
@@ -97,17 +82,15 @@ export default function StaffCoursesPage() {
                   <div className="text-muted-foreground">Passed</div>
                 </div>
               </div>
-
               {item.badgeAwarded && (
                 <div className="rounded-md border p-2 text-xs flex items-center gap-2">
                   <Trophy className="h-4 w-4 text-brand" />
                   <span>{item.awardedBadge?.badgeIcon} {item.awardedBadge?.badgeName}</span>
                 </div>
               )}
-
               <Button asChild className="w-full bg-brand text-brand-foreground">
-                <Link to={`/my-courses/${item.progressId}`}>
-                  {item.status === "COMPLETED" ? "View Result" : "Start / Continue"}
+                <Link to={`/staff/courses/${item.progressId}`}>
+                  {item.status === "COMPLETED" || item.status === "FAILED" ? "View Result" : "Start / Continue"}
                 </Link>
               </Button>
             </CardContent>
@@ -117,9 +100,7 @@ export default function StaffCoursesPage() {
 
       {!courses.length && (
         <Card>
-          <CardContent className="p-8 text-center text-muted-foreground">
-            No courses assigned yet.
-          </CardContent>
+          <CardContent className="p-8 text-center text-muted-foreground">No courses assigned yet.</CardContent>
         </Card>
       )}
     </div>
@@ -136,3 +117,12 @@ function Stat({ label, value }: { label: string; value: number }) {
     </Card>
   );
 }
+
+function PageLoader() {
+  return (
+    <div className="flex min-h-[50vh] items-center justify-center">
+      <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+    </div>
+  );
+}
+

@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { staffCourseApi, adminCourseApi } from "@/services/courseApi";
+import { staffWorkspaceApi } from "@/services/staffWorkspaceApi";
+import { adminCourseApi } from "@/services/courseApi";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -11,44 +12,41 @@ export default function StaffCourseAttemptPage() {
   const { progressId } = useParams<{ progressId: string }>();
   const navigate = useNavigate();
 
-  const [progress, setProgress]   = useState<any>(null);
-  const [course, setCourse]       = useState<any>(null);
-  const [answers, setAnswers]     = useState<Record<string, string>>({});
-  const [loading, setLoading]     = useState(true);
+  const [progress, setProgress]     = useState<any>(null);
+  const [course, setCourse]         = useState<any>(null);
+  const [answers, setAnswers]       = useState<Record<string, string>>({});
+  const [loading, setLoading]       = useState(true);
   const [submitting, setSubmitting] = useState(false);
 
-  const load = async () => {
+  useEffect(() => {
     if (!progressId) return;
     setLoading(true);
-    try {
-      const myCourses = await staffCourseApi.list();
-      const record = myCourses.find((c: any) => c.progressId === progressId);
-      if (!record) throw new Error("Course progress not found");
-      setProgress(record);
 
-      const courseData = await adminCourseApi.getById(record.courseId);
-      setCourse(courseData);
+    staffWorkspaceApi.courses()
+      .then(async (result) => {
+        const record = result.records?.find((c: any) => c.progressId === progressId);
+        if (!record) throw new Error("Course progress not found");
+        setProgress(record);
 
-      const initialAnswers: Record<string, string> = {};
-      record.answers?.forEach((a: any) => { initialAnswers[a.questionId] = a.submittedAnswer; });
-      setAnswers(initialAnswers);
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Failed to load course");
-    } finally {
-      setLoading(false);
-    }
-  };
+        const courseData = await adminCourseApi.getById(record.courseId);
+        setCourse(courseData);
 
-  useEffect(() => { load(); }, [progressId]);
+        const prev: Record<string, string> = {};
+        record.answers?.forEach((a: any) => { prev[a.questionId] = a.submittedAnswer; });
+        setAnswers(prev);
+      })
+      .catch((e) => toast.error(e instanceof Error ? e.message : "Failed to load course"))
+      .finally(() => setLoading(false));
+  }, [progressId]);
 
   const startCourse = async () => {
     if (!progressId) return;
     try {
-      const updated = await staffCourseApi.start(progressId);
+      const updated = await staffWorkspaceApi.startCourse(progressId);
       setProgress(updated);
       toast.success("Course started");
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Failed to start course");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Failed to start course");
     }
   };
 
@@ -60,41 +58,32 @@ export default function StaffCourseAttemptPage() {
       answer: answers[q.questionId] || "",
     }));
     try {
-      const result = await staffCourseApi.submit(progressId, payload);
+      const result = await staffWorkspaceApi.submitCourse(progressId, payload);
       setProgress(result);
-      if (result.score?.passed) toast.success("Course passed! Badge awarded.");
-      else toast.error("Submitted — passing score not achieved.");
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Failed to submit course");
+      if (result.score?.passed) toast.success("Course passed. Badge awarded.");
+      else toast.error("Course submitted, but passing score was not achieved.");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Failed to submit course");
     } finally {
       setSubmitting(false);
     }
   };
 
-  const isCompleted = progress?.status === "COMPLETED" || progress?.status === "FAILED";
-
-  if (loading) {
-    return (
-      <div className="flex min-h-[50vh] items-center justify-center">
-        <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-      </div>
-    );
-  }
+  if (loading) return <PageLoader />;
 
   if (!progress || !course) {
     return (
       <Card>
-        <CardContent className="p-8 text-center text-muted-foreground">
-          Course not found.
-        </CardContent>
+        <CardContent className="p-8 text-center text-muted-foreground">Course not found.</CardContent>
       </Card>
     );
   }
 
+  const isCompleted = progress.status === "COMPLETED" || progress.status === "FAILED";
+
   return (
     <div className="space-y-6 pb-8">
-      {/* header */}
-      <div className="rounded-2xl border bg-card p-5">
+      <header className="rounded-2xl border bg-card p-5">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
             <h1 className="text-2xl font-display font-bold">{course.title}</h1>
@@ -108,9 +97,8 @@ export default function StaffCourseAttemptPage() {
           <Badge variant="outline">{course.estimatedMinutes} mins</Badge>
           <Badge variant="outline">Pass {course.passingScorePercent}%</Badge>
         </div>
-      </div>
+      </header>
 
-      {/* reading material */}
       <Card>
         <CardHeader><CardTitle className="text-base">Reading Material</CardTitle></CardHeader>
         <CardContent>
@@ -118,23 +106,20 @@ export default function StaffCourseAttemptPage() {
             {course.readingContent}
           </p>
           {progress.status === "ASSIGNED" && (
-            <Button type="button" onClick={startCourse} className="mt-4 bg-brand text-brand-foreground">
+            <Button onClick={startCourse} className="mt-4 bg-brand text-brand-foreground">
               Start Course
             </Button>
           )}
         </CardContent>
       </Card>
 
-      {/* assessment */}
       {progress.status !== "ASSIGNED" && (
         <Card>
           <CardHeader><CardTitle className="text-base">Assessment</CardTitle></CardHeader>
           <CardContent className="space-y-5">
             {course.questions.map((q: any, index: number) => (
               <div key={q.questionId} className="rounded-lg border p-4 space-y-3">
-                <div className="font-medium text-sm">
-                  {index + 1}. {q.question}
-                </div>
+                <div className="font-medium text-sm">{index + 1}. {q.question}</div>
 
                 {q.type === "MCQ" && (
                   <div className="space-y-2">
@@ -185,11 +170,7 @@ export default function StaffCourseAttemptPage() {
             ))}
 
             {!isCompleted && (
-              <Button
-                disabled={submitting}
-                onClick={submit}
-                className="bg-brand text-brand-foreground"
-              >
+              <Button disabled={submitting} onClick={submit} className="bg-brand text-brand-foreground">
                 {submitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                 Submit Course
               </Button>
@@ -198,17 +179,15 @@ export default function StaffCourseAttemptPage() {
         </Card>
       )}
 
-      {/* result */}
       {isCompleted && (
         <Card>
           <CardHeader><CardTitle className="text-base">Result</CardTitle></CardHeader>
           <CardContent className="space-y-3">
             <div className="grid gap-3 md:grid-cols-3 text-center">
-              <Stat label="Score"  value={`${progress.score?.scorePercent || 0}%`} />
-              <Stat label="Marks"  value={`${progress.score?.obtainedMarks || 0}/${progress.score?.totalMarks || 0}`} />
-              <Stat label="Passed" value={progress.score?.passed ? "Yes" : "No"} />
+              <ResultStat label="Score"  value={`${progress.score?.scorePercent || 0}%`} />
+              <ResultStat label="Marks"  value={`${progress.score?.obtainedMarks || 0}/${progress.score?.totalMarks || 0}`} />
+              <ResultStat label="Passed" value={progress.score?.passed ? "Yes" : "No"} />
             </div>
-
             {progress.badgeAwarded && (
               <div className="rounded-lg border p-4 flex items-center gap-3">
                 <Trophy className="h-6 w-6 text-brand" />
@@ -216,14 +195,11 @@ export default function StaffCourseAttemptPage() {
                   <div className="font-semibold">
                     {progress.awardedBadge?.badgeIcon} {progress.awardedBadge?.badgeName}
                   </div>
-                  <div className="text-sm text-muted-foreground">
-                    {progress.awardedBadge?.description}
-                  </div>
+                  <div className="text-sm text-muted-foreground">{progress.awardedBadge?.description}</div>
                 </div>
               </div>
             )}
-
-            <Button variant="outline" onClick={() => navigate("/my-courses")}>
+            <Button variant="outline" onClick={() => navigate("/staff/courses")}>
               Back to Courses
             </Button>
           </CardContent>
@@ -233,11 +209,19 @@ export default function StaffCourseAttemptPage() {
   );
 }
 
-function Stat({ label, value }: { label: string; value: string }) {
+function ResultStat({ label, value }: { label: string; value: string }) {
   return (
     <div className="rounded-lg border p-3">
       <div className="text-xs text-muted-foreground">{label}</div>
       <div className="text-lg font-bold">{value}</div>
+    </div>
+  );
+}
+
+function PageLoader() {
+  return (
+    <div className="flex min-h-[50vh] items-center justify-center">
+      <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
     </div>
   );
 }

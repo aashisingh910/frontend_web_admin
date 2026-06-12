@@ -13,15 +13,23 @@ import { clearSession, type Session } from "@/lib/session";
 type NavItem = { title: string; url: string; icon: typeof LayoutDashboard; roles: Session["role"][] };
 
 const nav: NavItem[] = [
-  { title: "Dashboard",  url: "/dashboard",  icon: LayoutDashboard, roles: ["admin", "manager", "staff"] },
-  { title: "People",     url: "/people",     icon: Users2,          roles: ["admin"] },
-  { title: "Staff",      url: "/staff",      icon: Users,           roles: ["manager"] },
-  { title: "Courses",    url: "/courses",    icon: GraduationCap,   roles: ["admin", "manager", "staff"] },
-  { title: "Targets",    url: "/targets",    icon: Target,          roles: ["admin", "manager", "staff"] },
-  { title: "Attendance", url: "/attendance", icon: CalendarCheck,   roles: ["admin", "manager", "staff"] },
-  { title: "Notices",    url: "/notices",    icon: Megaphone,       roles: ["admin", "manager", "staff"] },
-  { title: "Incentives", url: "/incentives", icon: Award,           roles: ["admin", "manager", "staff"] },
-  { title: "Profile",    url: "/profile",    icon: User,            roles: ["staff"] },
+  // Admin + manager
+  { title: "Dashboard",  url: "/dashboard",        icon: LayoutDashboard, roles: ["admin", "manager"] },
+  { title: "People",     url: "/people",           icon: Users2,          roles: ["admin"] },
+  { title: "Staff",      url: "/staff",            icon: Users,           roles: ["manager"] },
+  { title: "Courses",    url: "/courses",          icon: GraduationCap,   roles: ["admin", "manager"] },
+  { title: "Targets",    url: "/targets",          icon: Target,          roles: ["admin", "manager"] },
+  { title: "Attendance", url: "/attendance",       icon: CalendarCheck,   roles: ["admin", "manager"] },
+  { title: "Notices",    url: "/notices",          icon: Megaphone,       roles: ["admin", "manager"] },
+  { title: "Incentives", url: "/incentives",       icon: Award,           roles: ["admin", "manager"] },
+  // Staff workspace
+  { title: "Dashboard",  url: "/staff/dashboard",  icon: LayoutDashboard, roles: ["staff"] },
+  { title: "Courses",    url: "/staff/courses",    icon: GraduationCap,   roles: ["staff"] },
+  { title: "Targets",    url: "/staff/targets",    icon: Target,          roles: ["staff"] },
+  { title: "Attendance", url: "/staff/attendance", icon: CalendarCheck,   roles: ["staff"] },
+  { title: "Notices",    url: "/staff/notices",    icon: Megaphone,       roles: ["staff"] },
+  { title: "Incentives", url: "/staff/incentives", icon: Award,           roles: ["staff"] },
+  { title: "Profile",    url: "/staff/profile",    icon: User,            roles: ["staff"] },
 ];
 
 export function AppSidebar({ session }: { session: Session }) {
