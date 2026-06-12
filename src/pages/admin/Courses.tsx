@@ -11,12 +11,13 @@ import {
   DialogHeader, DialogTitle, DialogTrigger,
 } from "@/components/ui/dialog";
 import {
-  Plus, GraduationCap, ArrowLeft, Loader2,
-  FileText, Video, BookOpen, Target, HelpCircle, CheckCircle2,
+  Plus, GraduationCap, ArrowLeft, Loader2, BookOpen, Target,
+  FileText, Video, HelpCircle, CheckCircle2, BookMarked, LayoutGrid,
+  Calendar, ExternalLink, AlertCircle,
 } from "lucide-react";
 import { toast } from "sonner";
 
-// ─── types ───────────────────────────────────────────────────────────────────
+// ─── types ────────────────────────────────────────────────────────────────────
 
 interface Course {
   _id: string;
@@ -40,39 +41,43 @@ interface Question {
   correctAnswer: number;
   marks: number;
   createdAt: string;
+  updatedAt: string;
 }
 
-const COVERS = [
-  "linear-gradient(135deg, var(--brand), var(--golden))",
-  "linear-gradient(135deg, var(--info), var(--brand))",
-  "linear-gradient(135deg, var(--brown), var(--golden))",
-  "linear-gradient(135deg, var(--golden), var(--brand))",
-  "linear-gradient(135deg, #b45309, #ea580c)",
-  "linear-gradient(135deg, #1e3a8a, #b45309)",
-];
+// ─── constants ────────────────────────────────────────────────────────────────
 
-const coverFor = (id: string) =>
-  COVERS[id.charCodeAt(id.length - 1) % COVERS.length];
+const COVERS = [
+  "linear-gradient(135deg,#3B2416 0%,#C8A24A 100%)",
+  "linear-gradient(135deg,#102A43 0%,#3B2416 100%)",
+  "linear-gradient(135deg,#6F4E37 0%,#C8A24A 100%)",
+  "linear-gradient(135deg,#B85C38 0%,#6F4E37 100%)",
+  "linear-gradient(135deg,#102A43 0%,#C8A24A 100%)",
+  "linear-gradient(135deg,#3B2416 0%,#B85C38 100%)",
+];
+const coverFor = (id: string) => COVERS[id.charCodeAt(id.length - 1) % COVERS.length];
+
+const Q_LABELS = ["A", "B", "C", "D"];
+
+const fmt = (d: string) =>
+  new Date(d).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" });
 
 // ─── main component ───────────────────────────────────────────────────────────
 
 export default function AdminCourses() {
-  const [courses, setCourses] = useState<Course[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [courses, setCourses]   = useState<Course[]>([]);
+  const [loading, setLoading]   = useState(true);
   const [selected, setSelected] = useState<Course | null>(null);
-  const [openDialog, setOpenDialog] = useState(false);
-  const [search, setSearch] = useState("");
+  const [openNew, setOpenNew]   = useState(false);
+  const [search, setSearch]     = useState("");
+  const [filter, setFilter]     = useState<"ALL" | "PUBLISHED" | "DRAFT">("ALL");
 
-  const fetchCourses = async () => {
+  const load = async () => {
     setLoading(true);
     try {
-      const res = await fetch(`${LMS_API_URL}/course`);
+      const res  = await fetch(`${LMS_API_URL}/course`);
       const data = await res.json();
-      if (res.ok && data.success) {
-        setCourses(data.data);
-      } else {
-        toast.error(data.message || "Failed to load courses");
-      }
+      if (res.ok && data.success) setCourses(data.data);
+      else toast.error(data.message || "Failed to load courses");
     } catch {
       toast.error("Network error — could not load courses");
     } finally {
@@ -80,26 +85,25 @@ export default function AdminCourses() {
     }
   };
 
-  useEffect(() => { fetchCourses(); }, []);
+  useEffect(() => { load(); }, []);
 
   const handleCreate = async (payload: Partial<Course>) => {
     try {
       const token = localStorage.getItem("token");
-      const user = JSON.parse(localStorage.getItem("user") || "{}");
-      const createdBy = user?._id || user?.id || "";
-      const res = await fetch(`${LMS_API_URL}/course`, {
+      const user  = JSON.parse(localStorage.getItem("user") || "{}");
+      const res   = await fetch(`${LMS_API_URL}/course`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
           ...(token ? { Authorization: `Bearer ${token}` } : {}),
         },
-        body: JSON.stringify({ ...payload, createdBy }),
+        body: JSON.stringify({ ...payload, createdBy: user?._id || user?.id || "" }),
       });
       const data = await res.json();
       if (res.ok && data.success) {
-        toast.success(`Course "${payload.title}" created`);
-        setCourses((prev) => [data.data, ...prev]);
-        setOpenDialog(false);
+        toast.success(`"${payload.title}" created`);
+        setCourses((p) => [data.data, ...p]);
+        setOpenNew(false);
       } else {
         toast.error(data.message || "Creation failed");
       }
@@ -109,71 +113,121 @@ export default function AdminCourses() {
   };
 
   if (selected) {
-    return <CourseDetail course={selected} onBack={() => setSelected(null)} />;
-  }
-
-  const filtered = courses.filter((c) =>
-    c.title.toLowerCase().includes(search.toLowerCase()) ||
-    c.description.toLowerCase().includes(search.toLowerCase())
-  );
-
-  if (loading) {
     return (
-      <div className="space-y-6">
-        <div className="flex justify-between">
-          <h1 className="text-2xl font-display font-bold">Courses</h1>
-          <Button disabled><Plus className="h-4 w-4 mr-1" /> New course</Button>
-        </div>
-        <div className="grid sm:grid-cols-2 xl:grid-cols-3 gap-4">
-          {Array.from({ length: 6 }).map((_, i) => (
-            <Card key={i} className="animate-pulse"><CardContent className="p-4 h-48" /></Card>
-          ))}
-        </div>
-      </div>
+      <CourseDetail
+        course={selected}
+        onBack={() => setSelected(null)}
+      />
     );
   }
 
+  const published = courses.filter((c) => c.status === "PUBLISHED");
+  const draft     = courses.filter((c) => c.status === "DRAFT");
+  const avgPass   = courses.length
+    ? Math.round(courses.reduce((a, c) => a + c.passingPercentage, 0) / courses.length)
+    : 0;
+
+  const visible = courses.filter((c) => {
+    const matchFilter = filter === "ALL" || c.status === filter;
+    const matchSearch =
+      c.title.toLowerCase().includes(search.toLowerCase()) ||
+      c.description.toLowerCase().includes(search.toLowerCase());
+    return matchFilter && matchSearch;
+  });
+
   return (
     <div className="space-y-6">
-      <div className="flex flex-wrap items-center justify-between gap-3">
+      {/* ── header ── */}
+      <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-display font-bold">Courses</h1>
-          <p className="text-sm text-muted-foreground">
-            {courses.length} course{courses.length !== 1 ? "s" : ""} in LMS
-          </p>
+          <h1 className="text-2xl font-display font-bold">Course Library</h1>
+          <p className="text-sm text-muted-foreground">Manage LMS courses and quiz questions</p>
         </div>
-        <div className="flex gap-2">
-          <Input
-            placeholder="Search courses…"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="w-[200px]"
-          />
-          <Dialog open={openDialog} onOpenChange={setOpenDialog}>
-            <DialogTrigger asChild>
-              <Button className="bg-brand text-brand-foreground hover:bg-brand/90 shadow-warm">
-                <Plus className="h-4 w-4 mr-1" /> New course
-              </Button>
-            </DialogTrigger>
-            <NewCourseDialog onCreate={handleCreate} />
-          </Dialog>
-        </div>
+        <Dialog open={openNew} onOpenChange={setOpenNew}>
+          <DialogTrigger asChild>
+            <Button className="bg-brand text-brand-foreground hover:bg-brand/90 shadow-warm">
+              <Plus className="h-4 w-4 mr-1.5" /> New Course
+            </Button>
+          </DialogTrigger>
+          <NewCourseDialog onCreate={handleCreate} />
+        </Dialog>
       </div>
 
-      {!filtered.length && (
+      {/* ── KPI strip ── */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        {[
+          { icon: LayoutGrid,   label: "Total Courses",  value: courses.length,   tint: "bg-brand/10 text-brand" },
+          { icon: GraduationCap,label: "Published",      value: published.length, tint: "bg-emerald-500/10 text-emerald-700" },
+          { icon: BookMarked,   label: "Draft",          value: draft.length,     tint: "bg-amber-500/10 text-amber-700" },
+          { icon: Target,       label: "Avg Pass %",     value: `${avgPass}%`,    tint: "bg-blue-500/10 text-blue-700" },
+        ].map((k) => (
+          <Card key={k.label}>
+            <CardContent className="p-4 flex items-center gap-3">
+              <div className={`h-9 w-9 rounded-lg flex items-center justify-center shrink-0 ${k.tint}`}>
+                <k.icon className="h-4 w-4" />
+              </div>
+              <div>
+                <p className="text-[11px] uppercase tracking-wide text-muted-foreground leading-none">{k.label}</p>
+                <p className="font-display text-xl font-bold mt-0.5">{k.value}</p>
+              </div>
+            </CardContent>
+          </Card>
+        ))}
+      </div>
+
+      {/* ── toolbar ── */}
+      <div className="flex flex-wrap items-center gap-2">
+        <Input
+          placeholder="Search courses…"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          className="w-52"
+        />
+        <div className="flex rounded-lg border overflow-hidden">
+          {(["ALL", "PUBLISHED", "DRAFT"] as const).map((s) => (
+            <button
+              key={s}
+              onClick={() => setFilter(s)}
+              className={`px-3 py-1.5 text-xs font-medium transition ${
+                filter === s
+                  ? "bg-brand text-white"
+                  : "bg-background text-muted-foreground hover:bg-muted"
+              }`}
+            >
+              {s === "ALL" ? "All" : s === "PUBLISHED" ? "Published" : "Draft"}
+            </button>
+          ))}
+        </div>
+        <span className="ml-auto text-xs text-muted-foreground">{visible.length} result{visible.length !== 1 ? "s" : ""}</span>
+      </div>
+
+      {/* ── loading ── */}
+      {loading && (
+        <div className="grid sm:grid-cols-2 xl:grid-cols-3 gap-4">
+          {Array.from({ length: 6 }).map((_, i) => (
+            <Card key={i} className="animate-pulse"><CardContent className="p-4 h-56" /></Card>
+          ))}
+        </div>
+      )}
+
+      {/* ── empty ── */}
+      {!loading && !visible.length && (
         <Card>
-          <CardContent className="py-12 text-center text-muted-foreground">
-            <GraduationCap className="h-8 w-8 mx-auto mb-2 opacity-40" />
-            {search ? "No courses match your search." : "No courses yet."}
+          <CardContent className="py-14 text-center text-muted-foreground">
+            <GraduationCap className="h-9 w-9 mx-auto mb-2 opacity-30" />
+            <p className="text-sm">{search || filter !== "ALL" ? "No courses match your filter." : "No courses yet."}</p>
           </CardContent>
         </Card>
       )}
 
-      <div className="grid sm:grid-cols-2 xl:grid-cols-3 gap-4">
-        {filtered.map((c) => (
-          <CourseCard key={c._id} course={c} onOpen={() => setSelected(c)} />
-        ))}
-      </div>
+      {/* ── grid ── */}
+      {!loading && (
+        <div className="grid sm:grid-cols-2 xl:grid-cols-3 gap-5">
+          {visible.map((c) => (
+            <CourseCard key={c._id} course={c} onOpen={() => setSelected(c)} />
+          ))}
+        </div>
+      )}
     </div>
   );
 }
@@ -182,41 +236,67 @@ export default function AdminCourses() {
 
 function CourseCard({ course, onOpen }: { course: Course; onOpen: () => void }) {
   return (
-    <Card className="overflow-hidden hover:shadow-warm transition group cursor-pointer" onClick={onOpen}>
-      <div className="h-24 relative" style={{ background: coverFor(course._id) }}>
-        <div className="absolute inset-0 bg-black/10" />
+    <Card
+      className="group overflow-hidden cursor-pointer hover:shadow-[0_4px_20px_rgba(0,0,0,0.12)] hover:-translate-y-0.5 transition-all duration-200 border-border/60"
+      onClick={onOpen}
+    >
+      {/* cover */}
+      <div className="relative h-28" style={{ background: coverFor(course._id) }}>
+        <div className="absolute inset-0 bg-black/20" />
         <div className="absolute top-3 left-3">
-          <Badge className={`text-[10px] ${course.status === "PUBLISHED" ? "bg-emerald-500/90 text-white" : "bg-amber-500/90 text-white"}`}>
+          <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold ${
+            course.status === "PUBLISHED"
+              ? "bg-emerald-500/90 text-white"
+              : "bg-amber-400/90 text-black"
+          }`}>
             {course.status}
-          </Badge>
+          </span>
         </div>
         <div className="absolute bottom-3 left-3 right-3">
-          <div className="text-white font-display text-base font-semibold leading-tight drop-shadow line-clamp-1">
+          <h3 className="text-white font-display font-bold text-base leading-tight drop-shadow line-clamp-2">
             {course.title}
-          </div>
+          </h3>
         </div>
       </div>
-      <CardContent className="p-4 space-y-3">
-        <p className="text-xs text-muted-foreground line-clamp-2">{course.description}</p>
 
-        <div className="flex items-center gap-3 text-[11px] text-muted-foreground">
+      <CardContent className="p-4 space-y-3">
+        {/* description */}
+        <p className="text-xs text-muted-foreground line-clamp-2 leading-relaxed">{course.description}</p>
+
+        {/* content preview */}
+        <p className="text-xs text-foreground/70 line-clamp-3 leading-relaxed border-l-2 border-brand/30 pl-2">
+          {course.contentText}
+        </p>
+
+        {/* meta row */}
+        <div className="flex flex-wrap items-center gap-2 pt-1">
+          <span className="inline-flex items-center gap-1 rounded-full bg-brand/10 px-2 py-0.5 text-[10px] font-medium text-brand">
+            <Target className="h-2.5 w-2.5" /> Pass {course.passingPercentage}%
+          </span>
           {course.pdfUrl && (
-            <span className="flex items-center gap-1"><FileText className="h-3 w-3" /> PDF</span>
+            <span className="inline-flex items-center gap-1 rounded-full bg-muted px-2 py-0.5 text-[10px] text-muted-foreground">
+              <FileText className="h-2.5 w-2.5" /> PDF
+            </span>
           )}
           {course.videoUrl && (
-            <span className="flex items-center gap-1"><Video className="h-3 w-3" /> Video</span>
+            <span className="inline-flex items-center gap-1 rounded-full bg-muted px-2 py-0.5 text-[10px] text-muted-foreground">
+              <Video className="h-2.5 w-2.5" /> Video
+            </span>
           )}
-          <span className="flex items-center gap-1">
-            <Target className="h-3 w-3" /> Pass: {course.passingPercentage}%
-          </span>
         </div>
 
-        <div className="flex items-center justify-between pt-1">
-          <span className="text-[11px] text-muted-foreground">
-            {new Date(course.createdAt).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })}
+        {/* footer */}
+        <div className="flex items-center justify-between border-t pt-3">
+          <span className="flex items-center gap-1 text-[11px] text-muted-foreground">
+            <Calendar className="h-3 w-3" /> {fmt(course.createdAt)}
           </span>
-          <Button size="sm" variant="outline" onClick={(e) => { e.stopPropagation(); onOpen(); }}>
-            Open →
+          <Button
+            size="sm"
+            variant="ghost"
+            className="h-7 text-xs text-brand hover:text-brand hover:bg-brand/10 px-2"
+            onClick={(e) => { e.stopPropagation(); onOpen(); }}
+          >
+            View Details →
           </Button>
         </div>
       </CardContent>
@@ -227,31 +307,33 @@ function CourseCard({ course, onOpen }: { course: Course; onOpen: () => void }) 
 // ─── course detail ────────────────────────────────────────────────────────────
 
 function CourseDetail({ course, onBack }: { course: Course; onBack: () => void }) {
-  const [questions, setQuestions] = useState<Question[]>([]);
-  const [qLoading, setQLoading] = useState(true);
-  const [addQOpen, setAddQOpen] = useState(false);
+  const [questions, setQuestions]   = useState<Question[]>([]);
+  const [qLoading, setQLoading]     = useState(true);
+  const [qError, setQError]         = useState("");
+  const [addQOpen, setAddQOpen]     = useState(false);
+  const [newCourseOpen, setNewCourseOpen] = useState(false);
 
-  const fetchQuestions = async () => {
+  const loadQuestions = async () => {
     setQLoading(true);
+    setQError("");
     try {
-      const res = await fetch(`${LMS_API_URL}/course/${course._id}/question`);
+      const res  = await fetch(`${LMS_API_URL}/course/${course._id}/question`);
       const data = await res.json();
-      if (res.ok && data.success) {
-        setQuestions(Array.isArray(data.data) ? data.data : []);
-      }
+      if (res.ok && data.success) setQuestions(Array.isArray(data.data) ? data.data : []);
+      else setQError(data.message || "Failed to load questions");
     } catch {
-      // non-critical
+      setQError("Network error");
     } finally {
       setQLoading(false);
     }
   };
 
-  useEffect(() => { fetchQuestions(); }, [course._id]);
+  useEffect(() => { loadQuestions(); }, [course._id]);
 
-  const handleAddQuestion = async (payload: Omit<Question, "_id" | "createdAt">) => {
+  const handleAddQuestion = async (payload: Omit<Question, "_id" | "createdAt" | "updatedAt">) => {
     try {
       const token = localStorage.getItem("token");
-      const res = await fetch(`${LMS_API_URL}/course/${course._id}/question`, {
+      const res   = await fetch(`${LMS_API_URL}/course/${course._id}/question`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -262,7 +344,7 @@ function CourseDetail({ course, onBack }: { course: Course; onBack: () => void }
       const data = await res.json();
       if (res.ok && data.success) {
         toast.success("Question added");
-        setQuestions((prev) => [...prev, data.data]);
+        setQuestions((p) => [...p, data.data]);
         setAddQOpen(false);
       } else {
         toast.error(data.message || "Failed to add question");
@@ -272,73 +354,106 @@ function CourseDetail({ course, onBack }: { course: Course; onBack: () => void }
     }
   };
 
+  const totalMarks = questions.reduce((a, q) => a + q.marks, 0);
+
   return (
-    <div className="space-y-6">
-      <Button variant="ghost" size="sm" onClick={onBack}>
-        <ArrowLeft className="h-4 w-4 mr-2" /> Back to Courses
-      </Button>
+    <div className="space-y-6 pb-8">
+      {/* ── nav ── */}
+      <div className="flex items-center gap-3">
+        <Button variant="ghost" size="sm" onClick={onBack} className="gap-1.5">
+          <ArrowLeft className="h-4 w-4" /> Back to Courses
+        </Button>
+      </div>
 
-      <Card className="overflow-hidden">
-        <div className="relative p-6 sm:p-8" style={{ background: coverFor(course._id) }}>
-          <div className="absolute inset-0 bg-black/15" />
-          <div className="relative text-white space-y-3">
-            <div className="flex gap-2">
-              <Badge className={course.status === "PUBLISHED" ? "bg-emerald-500/90 text-white" : "bg-amber-500/90 text-white"}>
-                {course.status}
-              </Badge>
-              <Badge className="bg-white/20 border-white/30 text-white">
-                Pass: {course.passingPercentage}%
-              </Badge>
-            </div>
-            <h1 className="text-3xl font-display font-bold">{course.title}</h1>
-            <p className="text-white/80 text-sm">{course.description}</p>
+      {/* ── hero ── */}
+      <div className="relative rounded-xl overflow-hidden" style={{ background: coverFor(course._id) }}>
+        <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-black/20 to-transparent" />
+        <div className="relative p-7 sm:p-10 space-y-3">
+          <div className="flex flex-wrap gap-2">
+            <span className={`inline-flex items-center rounded-full px-3 py-1 text-xs font-semibold ${
+              course.status === "PUBLISHED" ? "bg-emerald-500 text-white" : "bg-amber-400 text-black"
+            }`}>{course.status}</span>
+            <span className="inline-flex items-center gap-1.5 rounded-full bg-white/20 px-3 py-1 text-xs text-white backdrop-blur-sm">
+              <Target className="h-3 w-3" /> Pass: {course.passingPercentage}%
+            </span>
+            {course.pdfUrl && (
+              <span className="inline-flex items-center gap-1.5 rounded-full bg-white/20 px-3 py-1 text-xs text-white backdrop-blur-sm">
+                <FileText className="h-3 w-3" /> PDF
+              </span>
+            )}
+            {course.videoUrl && (
+              <span className="inline-flex items-center gap-1.5 rounded-full bg-white/20 px-3 py-1 text-xs text-white backdrop-blur-sm">
+                <Video className="h-3 w-3" /> Video
+              </span>
+            )}
           </div>
+          <h1 className="text-3xl font-display font-bold text-white leading-tight">{course.title}</h1>
+          <p className="text-white/80 text-sm max-w-2xl">{course.description}</p>
+          <p className="text-white/50 text-xs">Added {fmt(course.createdAt)} · Last updated {fmt(course.updatedAt)}</p>
         </div>
-      </Card>
+      </div>
 
+      {/* ── body ── */}
       <div className="grid lg:grid-cols-3 gap-6">
-        <div className="lg:col-span-2 space-y-4">
+
+        {/* left col */}
+        <div className="lg:col-span-2 space-y-6">
+
+          {/* content */}
           <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
+            <CardHeader className="pb-3">
+              <CardTitle className="flex items-center gap-2 text-base">
                 <BookOpen className="h-4 w-4 text-brand" /> Course Content
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <p className="text-sm whitespace-pre-wrap leading-relaxed">{course.contentText}</p>
+              <p className="text-sm leading-7 whitespace-pre-wrap text-foreground/80">{course.contentText}</p>
             </CardContent>
           </Card>
 
-          {/* Questions */}
+          {/* questions */}
           <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-3">
-              <CardTitle className="flex items-center gap-2">
-                <HelpCircle className="h-4 w-4 text-brand" /> Quiz Questions
-                <Badge variant="outline" className="ml-1 text-[10px]">{questions.length}</Badge>
-              </CardTitle>
-              <Dialog open={addQOpen} onOpenChange={setAddQOpen}>
-                <DialogTrigger asChild>
-                  <Button size="sm" className="bg-brand text-brand-foreground hover:bg-brand/90">
-                    <Plus className="h-3.5 w-3.5 mr-1" /> Add Question
-                  </Button>
-                </DialogTrigger>
-                <AddQuestionDialog courseId={course._id} onAdd={handleAddQuestion} />
-              </Dialog>
+            <CardHeader className="pb-3">
+              <div className="flex items-center justify-between">
+                <CardTitle className="flex items-center gap-2 text-base">
+                  <HelpCircle className="h-4 w-4 text-brand" /> Quiz Questions
+                  {!qLoading && (
+                    <span className="text-xs font-normal text-muted-foreground">
+                      ({questions.length} question{questions.length !== 1 ? "s" : ""}{totalMarks > 0 ? `, ${totalMarks} marks` : ""})
+                    </span>
+                  )}
+                </CardTitle>
+                <Dialog open={addQOpen} onOpenChange={setAddQOpen}>
+                  <DialogTrigger asChild>
+                    <Button size="sm" className="h-8 bg-brand text-white hover:bg-brand/90 text-xs">
+                      <Plus className="h-3.5 w-3.5 mr-1" /> Add Question
+                    </Button>
+                  </DialogTrigger>
+                  <AddQuestionDialog courseId={course._id} onAdd={handleAddQuestion} />
+                </Dialog>
+              </div>
             </CardHeader>
-            <CardContent>
-              {qLoading ? (
-                <div className="flex items-center justify-center py-8">
+            <CardContent className="pt-0">
+              {qLoading && (
+                <div className="flex items-center justify-center py-10">
                   <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
                 </div>
-              ) : questions.length === 0 ? (
-                <div className="py-8 text-center text-muted-foreground text-sm">
-                  <HelpCircle className="h-7 w-7 mx-auto mb-2 opacity-30" />
-                  No questions yet. Add the first one.
+              )}
+              {qError && (
+                <div className="flex items-center gap-2 rounded-lg bg-red-50 border border-red-200 p-3 text-xs text-red-600">
+                  <AlertCircle className="h-4 w-4 shrink-0" /> {qError}
                 </div>
-              ) : (
+              )}
+              {!qLoading && !qError && questions.length === 0 && (
+                <div className="py-10 text-center">
+                  <HelpCircle className="h-8 w-8 mx-auto mb-2 text-muted-foreground/30" />
+                  <p className="text-sm text-muted-foreground">No questions yet — add the first one.</p>
+                </div>
+              )}
+              {!qLoading && questions.length > 0 && (
                 <div className="space-y-4">
                   {questions.map((q, idx) => (
-                    <QuestionRow key={q._id} question={q} index={idx} />
+                    <QuestionCard key={q._id} question={q} index={idx} />
                   ))}
                 </div>
               )}
@@ -346,59 +461,85 @@ function CourseDetail({ course, onBack }: { course: Course; onBack: () => void }
           </Card>
         </div>
 
+        {/* right col */}
         <div className="space-y-4">
-          {course.pdfUrl && (
+
+          {/* resource links */}
+          {(course.pdfUrl || course.videoUrl) && (
             <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2 text-base">
-                  <FileText className="h-4 w-4 text-brand" /> PDF Material
-                </CardTitle>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm">Resources</CardTitle>
               </CardHeader>
-              <CardContent>
-                <a
-                  href={course.pdfUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-sm text-brand hover:underline break-all"
-                >
-                  Open PDF →
-                </a>
+              <CardContent className="space-y-2">
+                {course.pdfUrl && (
+                  <a
+                    href={course.pdfUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center gap-2 rounded-lg border p-3 text-sm hover:border-brand/50 hover:bg-brand/5 transition-colors group"
+                  >
+                    <div className="h-8 w-8 rounded-md bg-red-50 flex items-center justify-center shrink-0">
+                      <FileText className="h-4 w-4 text-red-500" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="font-medium text-xs">PDF Material</div>
+                      <div className="text-[11px] text-muted-foreground truncate">{course.pdfUrl}</div>
+                    </div>
+                    <ExternalLink className="h-3.5 w-3.5 text-muted-foreground group-hover:text-brand" />
+                  </a>
+                )}
+                {course.videoUrl && (
+                  <a
+                    href={course.videoUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center gap-2 rounded-lg border p-3 text-sm hover:border-brand/50 hover:bg-brand/5 transition-colors group"
+                  >
+                    <div className="h-8 w-8 rounded-md bg-blue-50 flex items-center justify-center shrink-0">
+                      <Video className="h-4 w-4 text-blue-500" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="font-medium text-xs">Video Lesson</div>
+                      <div className="text-[11px] text-muted-foreground truncate">{course.videoUrl}</div>
+                    </div>
+                    <ExternalLink className="h-3.5 w-3.5 text-muted-foreground group-hover:text-brand" />
+                  </a>
+                )}
               </CardContent>
             </Card>
           )}
 
-          {course.videoUrl && (
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2 text-base">
-                  <Video className="h-4 w-4 text-brand" /> Video
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <a
-                  href={course.videoUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-sm text-brand hover:underline break-all"
-                >
-                  Watch video →
-                </a>
-              </CardContent>
-            </Card>
-          )}
-
+          {/* course info */}
           <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2 text-base">
-                <Target className="h-4 w-4 text-brand" /> Passing Criteria
-              </CardTitle>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm">Course Info</CardTitle>
             </CardHeader>
-            <CardContent className="text-sm space-y-1">
-              <div>Passing percentage: <b>{course.passingPercentage}%</b></div>
-              <div className="text-xs text-muted-foreground">
-                Added {new Date(course.createdAt).toLocaleDateString("en-IN", {
-                  day: "numeric", month: "long", year: "numeric"
-                })}
+            <CardContent className="space-y-3 text-sm">
+              <div className="flex justify-between items-center py-2 border-b">
+                <span className="text-muted-foreground text-xs">Status</span>
+                <Badge className={`text-[10px] ${course.status === "PUBLISHED" ? "bg-emerald-100 text-emerald-700" : "bg-amber-100 text-amber-700"}`}>
+                  {course.status}
+                </Badge>
+              </div>
+              <div className="flex justify-between items-center py-2 border-b">
+                <span className="text-muted-foreground text-xs">Passing Score</span>
+                <span className="font-semibold text-xs">{course.passingPercentage}%</span>
+              </div>
+              <div className="flex justify-between items-center py-2 border-b">
+                <span className="text-muted-foreground text-xs">Questions</span>
+                <span className="font-semibold text-xs">{qLoading ? "…" : questions.length}</span>
+              </div>
+              <div className="flex justify-between items-center py-2 border-b">
+                <span className="text-muted-foreground text-xs">Total Marks</span>
+                <span className="font-semibold text-xs">{qLoading ? "…" : totalMarks}</span>
+              </div>
+              <div className="flex justify-between items-center py-2 border-b">
+                <span className="text-muted-foreground text-xs">Created</span>
+                <span className="text-xs">{fmt(course.createdAt)}</span>
+              </div>
+              <div className="flex justify-between items-center py-2">
+                <span className="text-muted-foreground text-xs">Updated</span>
+                <span className="text-xs">{fmt(course.updatedAt)}</span>
               </div>
             </CardContent>
           </Card>
@@ -408,37 +549,47 @@ function CourseDetail({ course, onBack }: { course: Course; onBack: () => void }
   );
 }
 
-// ─── question row ─────────────────────────────────────────────────────────────
+// ─── question card ────────────────────────────────────────────────────────────
 
-function QuestionRow({ question, index }: { question: Question; index: number }) {
+function QuestionCard({ question, index }: { question: Question; index: number }) {
   return (
-    <div className="rounded-lg border p-4 space-y-3">
+    <div className="rounded-xl border border-border/60 p-4 space-y-3 hover:border-brand/30 transition-colors">
       <div className="flex items-start gap-3">
-        <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-brand/10 text-[10px] font-bold text-brand">
+        <span className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-brand/10 text-[11px] font-bold text-brand">
           {index + 1}
         </span>
-        <div className="flex-1 space-y-2">
-          <p className="text-sm font-medium">{question.question}</p>
-          <div className="grid grid-cols-2 gap-1.5">
+        <div className="flex-1 space-y-3">
+          <p className="text-sm font-medium leading-relaxed">{question.question}</p>
+
+          <div className="grid grid-cols-2 gap-2">
             {question.options.map((opt, i) => (
               <div
                 key={i}
-                className={`flex items-center gap-1.5 rounded-md px-2 py-1.5 text-xs border ${
+                className={`flex items-start gap-2 rounded-lg border px-3 py-2 text-xs transition-colors ${
                   i === question.correctAnswer
-                    ? "border-emerald-500/40 bg-emerald-50 text-emerald-700"
-                    : "border-border bg-muted/30 text-muted-foreground"
+                    ? "border-emerald-400/60 bg-emerald-50 text-emerald-800"
+                    : "border-border/60 bg-muted/30 text-muted-foreground"
                 }`}
               >
+                <span className={`mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-full text-[9px] font-bold ${
+                  i === question.correctAnswer ? "bg-emerald-500 text-white" : "bg-border text-muted-foreground"
+                }`}>
+                  {Q_LABELS[i]}
+                </span>
+                <span className="leading-relaxed">{opt}</span>
                 {i === question.correctAnswer && (
-                  <CheckCircle2 className="h-3 w-3 shrink-0" />
+                  <CheckCircle2 className="h-3.5 w-3.5 shrink-0 ml-auto mt-0.5 text-emerald-500" />
                 )}
-                <span className="line-clamp-2">{opt}</span>
               </div>
             ))}
           </div>
-          <Badge variant="outline" className="text-[10px]">
-            {question.marks} mark{question.marks !== 1 ? "s" : ""}
-          </Badge>
+
+          <div className="flex items-center gap-2">
+            <Badge variant="outline" className="text-[10px] font-normal">
+              {question.marks} mark{question.marks !== 1 ? "s" : ""}
+            </Badge>
+            <span className="text-[10px] text-muted-foreground">Correct: Option {Q_LABELS[question.correctAnswer]}</span>
+          </div>
         </div>
       </div>
     </div>
@@ -452,89 +603,93 @@ function AddQuestionDialog({
   onAdd,
 }: {
   courseId: string;
-  onAdd: (payload: Omit<Question, "_id" | "createdAt">) => Promise<void>;
+  onAdd: (payload: Omit<Question, "_id" | "createdAt" | "updatedAt">) => Promise<void>;
 }) {
-  const [questionText, setQuestionText] = useState("");
-  const [options, setOptions]           = useState(["", "", "", ""]);
-  const [correctAnswer, setCorrectAnswer] = useState(0);
-  const [marks, setMarks]               = useState(1);
-  const [saving, setSaving]             = useState(false);
+  const [qText, setQText]       = useState("");
+  const [options, setOptions]   = useState(["", "", "", ""]);
+  const [correct, setCorrect]   = useState(0);
+  const [marks, setMarks]       = useState(1);
+  const [saving, setSaving]     = useState(false);
 
-  const setOption = (i: number, val: string) =>
-    setOptions((prev) => prev.map((o, idx) => (idx === i ? val : o)));
+  const updateOpt = (i: number, v: string) =>
+    setOptions((p) => p.map((o, idx) => (idx === i ? v : o)));
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const submit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!questionText.trim()) { toast.error("Question text is required"); return; }
+    if (!qText.trim()) { toast.error("Question text is required"); return; }
     if (options.some((o) => !o.trim())) { toast.error("All 4 options are required"); return; }
     setSaving(true);
-    await onAdd({ courseId, question: questionText, options, correctAnswer, marks });
+    await onAdd({ courseId, question: qText, options, correctAnswer: correct, marks });
     setSaving(false);
   };
-
-  const labels = ["A", "B", "C", "D"];
 
   return (
     <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
       <DialogHeader>
-        <DialogTitle>Add question</DialogTitle>
-        <DialogDescription>MCQ — click a letter to mark the correct answer.</DialogDescription>
+        <DialogTitle>Add Question</DialogTitle>
+        <DialogDescription>
+          Enter the MCQ question. Click a letter circle to mark the correct answer.
+        </DialogDescription>
       </DialogHeader>
-      <form onSubmit={handleSubmit} className="space-y-4 pt-2">
-        <div>
+
+      <form onSubmit={submit} className="space-y-5 pt-2">
+        <div className="space-y-1.5">
           <Label>Question *</Label>
           <Textarea
             rows={3}
-            value={questionText}
-            onChange={(e) => setQuestionText(e.target.value)}
+            value={qText}
+            onChange={(e) => setQText(e.target.value)}
             placeholder="e.g. What is the full form of POS?"
             required
           />
         </div>
 
         <div className="space-y-2">
-          <Label>Options *</Label>
-          {options.map((opt, i) => (
-            <div key={i} className="flex items-center gap-2">
-              <button
-                type="button"
-                onClick={() => setCorrectAnswer(i)}
-                className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full border text-xs font-bold transition ${
-                  correctAnswer === i
-                    ? "border-emerald-500 bg-emerald-500 text-white"
-                    : "border-border bg-muted/40 text-muted-foreground hover:border-brand"
-                }`}
-                title={`Mark ${labels[i]} as correct`}
-              >
-                {labels[i]}
-              </button>
-              <Input
-                value={opt}
-                onChange={(e) => setOption(i, e.target.value)}
-                placeholder={`Option ${labels[i]}`}
-                required
-              />
-            </div>
-          ))}
-          <p className="text-[11px] text-muted-foreground">
-            Correct answer: <b>Option {labels[correctAnswer]}</b>
+          <Label>Answer Options * <span className="text-muted-foreground font-normal">(click letter to mark correct)</span></Label>
+          <div className="space-y-2">
+            {options.map((opt, i) => (
+              <div key={i} className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setCorrect(i)}
+                  className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full border-2 text-xs font-bold transition ${
+                    correct === i
+                      ? "border-emerald-500 bg-emerald-500 text-white"
+                      : "border-border bg-muted/30 text-muted-foreground hover:border-brand"
+                  }`}
+                >
+                  {Q_LABELS[i]}
+                </button>
+                <Input
+                  value={opt}
+                  onChange={(e) => updateOpt(i, e.target.value)}
+                  placeholder={`Option ${Q_LABELS[i]}`}
+                  className={correct === i ? "border-emerald-400 focus-visible:ring-emerald-500" : ""}
+                  required
+                />
+              </div>
+            ))}
+          </div>
+          <p className="text-[11px] text-muted-foreground bg-muted/40 rounded px-2 py-1">
+            ✓ Correct answer set to Option <strong>{Q_LABELS[correct]}</strong>
           </p>
         </div>
 
-        <div>
-          <Label>Marks</Label>
+        <div className="space-y-1.5">
+          <Label>Marks for this question</Label>
           <Input
             type="number"
             min={1}
             max={100}
             value={marks}
-            onChange={(e) => setMarks(Number(e.target.value))}
+            onChange={(e) => setMarks(Math.max(1, Number(e.target.value)))}
+            className="w-28"
           />
         </div>
 
         <DialogFooter>
-          <Button type="submit" disabled={saving} className="bg-brand">
-            {saving ? <><Loader2 className="h-4 w-4 animate-spin mr-1" /> Saving…</> : "Add question"}
+          <Button type="submit" disabled={saving} className="bg-brand text-white hover:bg-brand/90">
+            {saving ? <><Loader2 className="h-4 w-4 animate-spin mr-1.5" />Saving…</> : "Add Question"}
           </Button>
         </DialogFooter>
       </form>
@@ -545,60 +700,93 @@ function AddQuestionDialog({
 // ─── new course dialog ────────────────────────────────────────────────────────
 
 function NewCourseDialog({ onCreate }: { onCreate: (c: Partial<Course>) => void }) {
-  const [title, setTitle]               = useState("");
-  const [description, setDescription]   = useState("");
-  const [contentText, setContentText]   = useState("");
-  const [pdfUrl, setPdfUrl]             = useState("");
-  const [videoUrl, setVideoUrl]         = useState("");
-  const [passingPercentage, setPassing] = useState(70);
-  const [saving, setSaving]             = useState(false);
+  const [title, setTitle]           = useState("");
+  const [description, setDesc]      = useState("");
+  const [contentText, setContent]   = useState("");
+  const [pdfUrl, setPdf]            = useState("");
+  const [videoUrl, setVideo]        = useState("");
+  const [passing, setPassing]       = useState(70);
+  const [status, setStatus]         = useState<"PUBLISHED" | "DRAFT">("PUBLISHED");
+  const [saving, setSaving]         = useState(false);
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!title.trim()) { toast.error("Title is required"); return; }
     if (!contentText.trim()) { toast.error("Course content is required"); return; }
     setSaving(true);
-    await onCreate({ title, description, contentText, pdfUrl, videoUrl, passingPercentage });
+    await onCreate({ title, description, contentText, pdfUrl, videoUrl, passingPercentage: passing, status });
     setSaving(false);
   };
 
   return (
     <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
       <DialogHeader>
-        <DialogTitle className="text-xl">Create new course</DialogTitle>
+        <DialogTitle className="text-xl">Create New Course</DialogTitle>
         <DialogDescription>Add a course to the LMS catalogue.</DialogDescription>
       </DialogHeader>
-      <form onSubmit={handleSubmit} className="space-y-4 pt-2">
-        <div>
-          <Label>Title *</Label>
-          <Input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="e.g. Sofa Sales Masterclass" required />
-        </div>
-        <div>
-          <Label>Description</Label>
-          <Input value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Short summary shown on the card" />
-        </div>
-        <div>
-          <Label>Course content *</Label>
-          <Textarea rows={5} value={contentText} onChange={(e) => setContentText(e.target.value)} placeholder="Full content / lesson text" required />
-        </div>
-        <div className="grid grid-cols-2 gap-3">
-          <div>
-            <Label>PDF URL (optional)</Label>
-            <Input value={pdfUrl} onChange={(e) => setPdfUrl(e.target.value)} placeholder="https://…" />
+
+      <form onSubmit={submit} className="space-y-4 pt-2">
+        <div className="grid sm:grid-cols-2 gap-4">
+          <div className="sm:col-span-2 space-y-1.5">
+            <Label>Title *</Label>
+            <Input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="e.g. Sofa Sales Masterclass" required />
           </div>
-          <div>
-            <Label>Video URL (optional)</Label>
-            <Input value={videoUrl} onChange={(e) => setVideoUrl(e.target.value)} placeholder="https://…" />
+
+          <div className="sm:col-span-2 space-y-1.5">
+            <Label>Description</Label>
+            <Input value={description} onChange={(e) => setDesc(e.target.value)} placeholder="Short summary shown on the card" />
+          </div>
+
+          <div className="sm:col-span-2 space-y-1.5">
+            <Label>Course Content *</Label>
+            <Textarea
+              rows={5}
+              value={contentText}
+              onChange={(e) => setContent(e.target.value)}
+              placeholder="Full lesson content / training material"
+              required
+            />
+          </div>
+
+          <div className="space-y-1.5">
+            <Label>PDF URL</Label>
+            <Input value={pdfUrl} onChange={(e) => setPdf(e.target.value)} placeholder="https://…" />
+          </div>
+
+          <div className="space-y-1.5">
+            <Label>Video URL</Label>
+            <Input value={videoUrl} onChange={(e) => setVideo(e.target.value)} placeholder="https://…" />
+          </div>
+
+          <div className="space-y-1.5">
+            <Label>Passing Percentage</Label>
+            <Input type="number" min={1} max={100} value={passing} onChange={(e) => setPassing(Number(e.target.value))} />
+          </div>
+
+          <div className="space-y-1.5">
+            <Label>Status</Label>
+            <div className="flex rounded-lg border overflow-hidden">
+              {(["PUBLISHED", "DRAFT"] as const).map((s) => (
+                <button
+                  key={s}
+                  type="button"
+                  onClick={() => setStatus(s)}
+                  className={`flex-1 py-2 text-xs font-medium transition ${
+                    status === s
+                      ? s === "PUBLISHED" ? "bg-emerald-500 text-white" : "bg-amber-400 text-black"
+                      : "bg-background text-muted-foreground hover:bg-muted"
+                  }`}
+                >
+                  {s}
+                </button>
+              ))}
+            </div>
           </div>
         </div>
-        <div>
-          <Label>Passing percentage</Label>
-          <Input type="number" min={1} max={100} value={passingPercentage}
-            onChange={(e) => setPassing(Number(e.target.value))} />
-        </div>
+
         <DialogFooter>
-          <Button type="submit" disabled={saving} className="bg-brand">
-            {saving ? <><Loader2 className="h-4 w-4 animate-spin mr-1" /> Creating…</> : "Create course"}
+          <Button type="submit" disabled={saving} className="bg-brand text-white hover:bg-brand/90">
+            {saving ? <><Loader2 className="h-4 w-4 animate-spin mr-1.5" />Creating…</> : "Create Course"}
           </Button>
         </DialogFooter>
       </form>
