@@ -1,36 +1,76 @@
+import { useEffect, useState } from "react";
+import { LMS_API_URL } from "@/lib/api";
 import { getSession } from "@/lib/session";
-import { managers, stores, getStaffByStore, courses } from "@/lib/mock-data";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
-import { GraduationCap, BookOpen, Users, CheckCircle2 } from "lucide-react";
-import { Link } from "react-router-dom";
+import { GraduationCap, BookOpen, Target, FileText, Video, Loader2 } from "lucide-react";
+
+// ─── types ───────────────────────────────────────────────────────────────────
+
+interface Course {
+  _id: string;
+  title: string;
+  description: string;
+  contentText: string;
+  pdfUrl: string;
+  videoUrl: string;
+  passingPercentage: number;
+  status: "PUBLISHED" | "DRAFT";
+  createdAt: string;
+}
+
+const COVERS = [
+  "linear-gradient(135deg, var(--brand), var(--golden))",
+  "linear-gradient(135deg, var(--info), var(--brand))",
+  "linear-gradient(135deg, var(--brown), var(--golden))",
+  "linear-gradient(135deg, var(--golden), var(--brand))",
+  "linear-gradient(135deg, #b45309, #ea580c)",
+  "linear-gradient(135deg, #1e3a8a, #b45309)",
+];
+
+const coverFor = (id: string) => COVERS[id.charCodeAt(id.length - 1) % COVERS.length];
+
+// ─── component ───────────────────────────────────────────────────────────────
 
 export default function ManagerCourses() {
   const session = getSession();
-  const mgr = managers.find((m) => m.email === session?.email) ?? managers[0];
-  const store = stores.find((s) => s.id === mgr.storeId) ?? stores[0];
-  const team = getStaffByStore(store.id);
-  const teamIds = team.map((s) => s.id);
+  const [courses, setCourses] = useState<Course[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
 
-  const relevantCourses = courses.filter(
-    (c) => c.assignedTo.some((id) => teamIds.includes(id)) || c.assignedTo.length === 0
-  );
+  useEffect(() => {
+    (async () => {
+      try {
+        const res = await fetch(`${LMS_API_URL}/course`);
+        const data = await res.json();
+        if (res.ok && data.success) setCourses(data.data);
+        else setError(data.message || "Failed to load courses");
+      } catch {
+        setError("Network error — could not load courses");
+      } finally {
+        setLoading(false);
+      }
+    })();
+  }, []);
+
+  const published = courses.filter((c) => c.status === "PUBLISHED");
 
   return (
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-display font-bold">Courses</h1>
         <p className="text-sm text-muted-foreground">
-          Track your team's learning progress at {store.name}.
+          {session?.storeName || "My store"} — track your team's learning progress.
         </p>
       </div>
 
+      {/* KPI strip */}
       <div className="grid sm:grid-cols-3 gap-3">
         {[
-          { icon: BookOpen, label: "Active courses", value: relevantCourses.length, tint: "bg-brand/10 text-brand" },
-          { icon: Users, label: "Team enrolled", value: relevantCourses.reduce((a, c) => a + c.assignedTo.filter((id) => teamIds.includes(id)).length, 0), tint: "bg-info/10 text-info" },
-          { icon: CheckCircle2, label: "Avg completion", value: relevantCourses.length ? Math.round(relevantCourses.reduce((a, c) => a + c.completionRate, 0) / relevantCourses.length) + "%" : "—", tint: "bg-emerald-500/10 text-emerald-700" },
+          { icon: BookOpen,      label: "Total courses",     value: courses.length,   tint: "bg-brand/10 text-brand" },
+          { icon: GraduationCap, label: "Published",         value: published.length, tint: "bg-emerald-500/10 text-emerald-700" },
+          { icon: Target,        label: "Avg pass %",        value: courses.length ? Math.round(courses.reduce((a, c) => a + c.passingPercentage, 0) / courses.length) + "%" : "—", tint: "bg-amber-500/10 text-amber-700" },
         ].map((k) => (
           <Card key={k.label}>
             <CardContent className="p-4 flex items-center gap-3">
@@ -46,63 +86,69 @@ export default function ManagerCourses() {
         ))}
       </div>
 
+      {loading && (
+        <div className="flex items-center justify-center py-16">
+          <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+        </div>
+      )}
+
+      {error && (
+        <Card>
+          <CardContent className="p-6 text-center text-red-600 text-sm">{error}</CardContent>
+        </Card>
+      )}
+
+      {!loading && !error && !courses.length && (
+        <Card>
+          <CardContent className="p-8 text-center text-muted-foreground">
+            <GraduationCap className="h-8 w-8 mx-auto mb-2 opacity-40" />
+            No courses available yet.
+          </CardContent>
+        </Card>
+      )}
+
       <div className="space-y-4">
-        {relevantCourses.map((course) => {
-          const enrolled = course.assignedTo.filter((id) => teamIds.includes(id));
-          const pct = course.completionRate;
-          return (
-            <Card key={course.id}>
-              <CardContent className="p-4">
-                <div className="flex flex-wrap items-start gap-4">
-                  <div className="h-12 w-16 rounded-md shrink-0" style={{ background: course.cover }} />
-                  <div className="flex-1 min-w-0">
-                    <div className="flex flex-wrap items-center gap-2 mb-1">
-                      <span className="font-semibold">{course.title}</span>
-                      <Badge variant="secondary" className="text-[10px]">{course.level}</Badge>
-                      <Badge variant="outline" className="text-[10px]">{course.category}</Badge>
-                    </div>
-                    <p className="text-xs text-muted-foreground">{course.summary}</p>
-
-                    <div className="mt-3">
-                      <div className="flex justify-between text-xs mb-1">
-                        <span className="text-muted-foreground">Team completion</span>
-                        <span className="font-medium">{pct}%</span>
-                      </div>
-                      <Progress value={pct} className="h-1.5 [&>div]:bg-brand" />
-                    </div>
-
-                    <div className="mt-3 flex items-center justify-between">
-                      <div className="flex gap-1">
-                        {team.filter((s) => enrolled.includes(s.id)).map((s) => (
-                          <span
-                            key={s.id}
-                            title={s.name}
-                            className="inline-flex h-6 w-6 items-center justify-center rounded-full text-white text-[10px] font-semibold ring-2 ring-background"
-                            style={{ background: s.avatarColor }}
-                          >
-                            {s.name[0]}
-                          </span>
-                        ))}
-                        {!enrolled.length && <span className="text-xs text-muted-foreground">Not assigned to your team</span>}
-                      </div>
-                      <Link to={`/courses/${course.id}`} className="text-xs text-brand hover:underline">
-                        View course →
-                      </Link>
-                    </div>
-                  </div>
+        {courses.map((course) => (
+          <Card key={course._id} className="overflow-hidden hover:border-brand/40 transition-colors">
+            <CardContent className="p-0 flex">
+              <div className="w-2 shrink-0" style={{ background: coverFor(course._id) }} />
+              <div className="p-4 flex-1 space-y-2">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="font-semibold">{course.title}</span>
+                  <Badge
+                    variant="outline"
+                    className={`text-[10px] ${course.status === "PUBLISHED" ? "bg-emerald-500/10 text-emerald-700 border-emerald-500/30" : "bg-amber-500/10 text-amber-700 border-amber-500/30"}`}
+                  >
+                    {course.status}
+                  </Badge>
                 </div>
-              </CardContent>
-            </Card>
-          );
-        })}
-        {!relevantCourses.length && (
-          <Card>
-            <CardContent className="p-8 text-center text-muted-foreground">
-              <GraduationCap className="h-8 w-8 mx-auto mb-2 opacity-40" />
-              No courses assigned yet.
+
+                <p className="text-xs text-muted-foreground line-clamp-2">{course.description}</p>
+
+                <div className="flex flex-wrap items-center gap-4 text-[11px] text-muted-foreground pt-1">
+                  <span className="flex items-center gap-1">
+                    <Target className="h-3 w-3" /> Pass: {course.passingPercentage}%
+                  </span>
+                  {course.pdfUrl && (
+                    <a href={course.pdfUrl} target="_blank" rel="noopener noreferrer"
+                      className="flex items-center gap-1 text-brand hover:underline" onClick={(e) => e.stopPropagation()}>
+                      <FileText className="h-3 w-3" /> PDF
+                    </a>
+                  )}
+                  {course.videoUrl && (
+                    <a href={course.videoUrl} target="_blank" rel="noopener noreferrer"
+                      className="flex items-center gap-1 text-brand hover:underline" onClick={(e) => e.stopPropagation()}>
+                      <Video className="h-3 w-3" /> Video
+                    </a>
+                  )}
+                  <span className="ml-auto">
+                    {new Date(course.createdAt).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })}
+                  </span>
+                </div>
+              </div>
             </CardContent>
           </Card>
-        )}
+        ))}
       </div>
     </div>
   );
