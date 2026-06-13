@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { setSession, type Session } from "@/lib/session";
-import { API_BASE_URL } from "@/lib/api";
+import { API_BASE_URL, ONTRACK_API_URL } from "@/lib/api";
 import type { Role } from "@/lib/mock-data";
 import { Logo } from "@/components/Logo";
 import { Button } from "@/components/ui/button";
@@ -167,7 +167,8 @@ export default function LoginPage() {
         url = `${API_BASE_URL}/auth/staff/login`;
         body = { identifier };
       } else {
-        url = `${API_BASE_URL}/users/login`;
+        // Use OnTrack login endpoint for admin users
+        url = `${ONTRACK_API_URL}/login-ontrack`;
         body = { email: identifier, password };
       }
 
@@ -197,11 +198,13 @@ export default function LoginPage() {
         data.data ||
         {};
 
-      if (!token) {
+      // Some backends (OnTrack local login) may not return a token.
+      // Allow login to proceed without token for admin role, but store token when available.
+      if (!token && role !== "admin") {
         throw new Error("Login token missing from backend response");
       }
 
-      localStorage.setItem("token", token);
+      if (token) localStorage.setItem("token", token);
       localStorage.setItem("user", JSON.stringify(apiUser));
 
       const session = buildSession(apiUser, token);
