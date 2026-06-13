@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { setSession, type Session } from "@/lib/session";
-import { API_BASE_URL, ONTRACK_API_URL } from "@/lib/api";
+import { API_BASE_URL, ONTRACK_API_URL, USERS_API_URL } from "@/lib/api";
 import type { Role } from "@/lib/mock-data";
 import { Logo } from "@/components/Logo";
 import { Button } from "@/components/ui/button";
@@ -167,12 +167,13 @@ export default function LoginPage() {
         url = `${API_BASE_URL}/auth/staff/login`;
         body = { identifier };
       } else {
-        // Use OnTrack login endpoint for admin users
+        // Primary: local OnTrack login (dev). Fallback: remote users login.
         url = `${ONTRACK_API_URL}/login-ontrack`;
         body = { email: identifier, password };
       }
 
-      const res = await fetch(url, {
+      // Try primary URL; for admin role attempt fallback if primary fails
+      let res = await fetch(url, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -180,7 +181,21 @@ export default function LoginPage() {
         body: JSON.stringify(body),
       });
 
-      const data = await res.json();
+      let data = await res.json().catch(() => ({}));
+
+      if ((!res.ok || !data.success) && role === "admin") {
+        try {
+          // fallback to remote users login
+          res = await fetch(`${USERS_API_URL}/login`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ email: identifier, password }),
+          });
+          data = await res.json().catch(() => ({}));
+        } catch (e) {
+          // ignore, will throw below
+        }
+      }
 
       if (!res.ok || !data.success) {
         throw new Error(data.message || "Login failed");
