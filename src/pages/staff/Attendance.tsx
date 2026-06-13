@@ -4,6 +4,7 @@ import { staff as allStaff, stores } from "@/lib/mock-data";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { staffWorkspaceApi } from "@/services/staffWorkspaceApi";
 import { MapPin, CheckCircle2, XCircle, Clock, CalendarDays, Store as StoreIcon, LogOut } from "lucide-react";
 import { toast } from "sonner";
 
@@ -34,16 +35,40 @@ export default function StaffAttendance() {
   const [checkedIn, setCheckedIn] = useState(false);
   const [checkInTime, setCheckInTime] = useState<string | null>(null);
 
-  const handleCheckIn = () => {
-    setCheckedIn(true);
-    const now = new Date();
-    setCheckInTime(now.toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" }));
-    toast.success("Checked in successfully! 42m from store — within geofence.");
+  const handleCheckIn = async () => {
+    const apiUser = JSON.parse(localStorage.getItem("user") || "{}");
+    const employeeId = apiUser?._id || apiUser?.id || session?.employeeCode;
+    if (!employeeId) { toast.error("Employee id missing"); return; }
+
+    try {
+      const lat = store.latitude?.toString() || "19.136851";
+      const lang = store.longitude?.toString() || "72.862235";
+      const res = await staffWorkspaceApi.checkIn(employeeId, lat, lang);
+      const iso = res?.attendance?.checkIn;
+      const now = iso ? new Date(iso) : new Date();
+      setCheckedIn(true);
+      setCheckInTime(now.toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" }));
+      toast.success("Checked in successfully");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Check-in failed");
+    }
   };
 
-  const handleCheckOut = () => {
-    setCheckedIn(false);
-    toast.success("Checked out. Have a great day!");
+  const handleCheckOut = async () => {
+    const apiUser = JSON.parse(localStorage.getItem("user") || "{}");
+    const employeeId = apiUser?._id || apiUser?.id || session?.employeeCode;
+    if (!employeeId) { toast.error("Employee id missing"); return; }
+
+    try {
+      const lat = store.latitude?.toString() || "19.136851";
+      const lang = store.longitude?.toString() || "72.862235";
+      await staffWorkspaceApi.checkOut(employeeId, lat, lang);
+      setCheckedIn(false);
+      setCheckInTime(null);
+      toast.success("Checked out. Have a great day!");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Check-out failed");
+    }
   };
 
   const presentDays = historyData.filter((d) => d.status === "present" || d.status === "late").length;

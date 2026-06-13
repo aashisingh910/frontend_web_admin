@@ -1,4 +1,4 @@
-import { API_BASE_URL } from "@/lib/api";
+import { API_BASE_URL, ONTRACK_BASE } from "@/lib/api";
 
 const authHeaders = () => ({
   "Content-Type": "application/json",
@@ -69,6 +69,30 @@ export const staffWorkspaceApi = {
 
   incentives: async (month = "2026-07") => {
     const res = await fetch(`${API_BASE_URL}/staff/incentives?month=${month}`, { headers: authHeaders() });
+    return handleResponse(res);
+  },
+
+  // OnTrack attendance APIs
+  checkIn: async (employeeId: string, lat: string, lang: string) => {
+    const res = await fetch(`${ONTRACK_BASE}/attendance/check-in`, {
+      method: "POST",
+      headers: authHeaders(),
+      body: JSON.stringify({ employeeId, lat, lang }),
+    });
+    return handleResponse(res);
+  },
+
+  checkOut: async (employeeId: string, lat: string, lang: string) => {
+    const res = await fetch(`${ONTRACK_BASE}/attendance/check-out`, {
+      method: "POST",
+      headers: authHeaders(),
+      body: JSON.stringify({ employeeId, lat, lang }),
+    });
+    return handleResponse(res);
+  },
+
+  attendanceList: async (employeeId: string) => {
+    const res = await fetch(`${ONTRACK_BASE}/attendance/${employeeId}`, { headers: authHeaders() });
     return handleResponse(res);
   },
 };
